@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 4.5 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 4.7 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
@@ -42,6 +42,8 @@ GROQ_MODELO = os.getenv('GROQ_MODELO', 'openai/gpt-oss-120b')
 AERO_IA_MIN_FUENTES = max(1, int(os.getenv('AERO_IA_MIN_FUENTES', '1')))
 AERO_IA_MIN_DATOS = max(2, int(os.getenv('AERO_IA_MIN_DATOS', '3')))
 AERO_IA_DRY_RUN = os.getenv('AERO_IA_DRY_RUN', 'false').lower() == 'true'
+AERO_INVESTIGACION_WEB = os.getenv('AERO_INVESTIGACION_WEB', 'auto').strip().lower()  # auto, gemini, groq, ambas, off
+AERO_BUSQUEDA_MAX_URLS = max(3,min(24,int(os.getenv('AERO_BUSQUEDA_MAX_URLS','12'))))
 AERO_IA_URLS = os.getenv('AERO_IA_URLS', '').strip()  # URLs propias, separadas por |, opcionales
 MUSICA_VOLUMEN = 0.065  # más presencia, con limitador final para evitar clipping
 LIKE_PAGE_URL = 'https://commons.wikimedia.org/wiki/File:Facebook_Like_button.svg'
@@ -139,6 +141,10 @@ def _tokens_tema(caso):
         'atc_05':{'runway selection','runway in use','active runway',
                   'runway use','crosswind','tailwind','wind','controller-in-charge',
                   'runway'},
+        'future_05':{'composite','composites','advanced composite materials',
+                     'carbon fiber','carbon fibre','fiber reinforced','fiberglass',
+                     'laminate','lightweight','weight','corrosion','damage tolerance',
+                     'composite aircraft','structural','material'},
     }
     return tokens | equivalencias.get(tema_id,set())
 
@@ -147,7 +153,14 @@ def _relevancia_documento(texto, caso):
     import unicodedata
     t=''.join(c for c in unicodedata.normalize('NFKD',texto.lower()) if not unicodedata.combining(c))
     tokens=_tokens_tema(caso)
-    return len([x for x in tokens if re.search(r'\b'+re.escape(x)+r'\b',t)])
+    coincidencias={x for x in tokens if re.search(r'\b'+re.escape(x)+r'\b',t)}
+    tema_id=caso.get('_episodio',{}).get('caso_id',caso.get('id',''))
+    if tema_id=='future_05' and not coincidencias.intersection(
+            {'composite','composites','advanced composite materials','carbon fiber',
+             'carbon fibre','fiber reinforced','fiberglass','laminate',
+             'composite aircraft'}):
+        return 0
+    return len(coincidencias)
 
 
 def _extraer_pdf_oficial(response, caso):
@@ -160,7 +173,10 @@ def _extraer_pdf_oficial(response, caso):
     from urllib.parse import urlparse
     from pypdf import PdfReader
     host=(urlparse(response.url).hostname or '').lower()
-    permitidos=('faa.gov','easa.europa.eu','icao.int','iata.org','weather.gov','noaa.gov')
+    permitidos=('faa.gov','easa.europa.eu','icao.int','iata.org','weather.gov','noaa.gov',
+               'nasa.gov','ntsb.gov','airbus.com','boeing.com','skybrary.aero',
+               'eurocontrol.int','caa.co.uk','atsb.gov.au','metoffice.gov.uk',
+               'airlines.org','mit.edu','ntrs.nasa.gov','aeronautics.nasa.gov')
     if not any(host==d or host.endswith('.'+d) for d in permitidos):
         return ''
     limite=23_000_000
@@ -265,6 +281,13 @@ def _rutas_documentacion_oficial(caso):
         ('FAA: PHAK, capítulo 8 Flight Instruments',phak+'chapter-8-flight-instruments'),
         ('FAA: Instrument Flying Handbook',
          'https://www.faa.gov/sites/faa.gov/files/pilots/FAA-H-8083-15B.pdf')],
+      'future_05':[
+        ('FAA: Advanced Composite Materials (certificación y estructuras)',
+         'https://www.faa.gov/aircraft/air_cert/step/disciplines/advanced_composite_materials'),
+        ('NASA: HiCAM, compuestos y reducción de peso en aeronaves',
+         'https://www.nasa.gov/directorates/armd/aavp/hicam/about-hicam/'),
+        ('FAA: Reparaciones y alteraciones de estructuras compuestas',
+         'https://www.faa.gov/regulations_policies/advisory_circulars/index.cfm/go/document.information/documentid/1029806')],
       'atc_05':[
         ('FAA JO 7110.65: Runway Selection, sección 3-5',
          'https://www.faa.gov/air_traffic/publications/atpubs/atc_html/chap3_section_5.html'),
@@ -305,24 +328,146 @@ def _descubrir_pdf_faa(session, url, caso):
     except Exception:return []
 
 
-def investigar_episodio(caso, carpeta, session):
-    """Investiga documentos legibles primero; RSS/GDELT son opcionales.
+def _url_publica_investigacion(url):
+    """Admite fuentes públicas HTTPS; rechaza hosts locales, privados y URLs sospechosas."""
+    from urllib.parse import urlsplit, urlunsplit
+    import ipaddress
+    url=html.unescape(str(url or '')).strip().strip('<>\"\'`.,;)]')
+    try:
+        p=urlsplit(url)
+        if p.scheme!='https' or not p.hostname or p.username or p.password:return None
+        host=p.hostname.lower().rstrip('.')
+        if host in {'localhost','metadata.google.internal'} or host.endswith(('.local','.internal','.localhost')):return None
+        try:
+            ip=ipaddress.ip_address(host)
+            if not ip.is_global:return None
+        except ValueError:pass
+        if p.port not in (None,443):return None
+        if len(url)>1300:return None
+        if host in {'generativelanguage.googleapis.com','api.groq.com'}:return None
+        return urlunsplit(('https',p.netloc,p.path,p.query,''))
+    except (ValueError,TypeError):return None
 
-    Nunca declara fuentes verificadas por el simple hecho de alcanzar una URL.
-    Si ninguna fuente proporciona texto relevante, detiene la publicación.
+
+def _enlaces_de_texto_investigado(texto):
+    """Extrae enlaces explícitos; ninguna mención sin URL cuenta como evidencia."""
+    from urllib.parse import unquote
+    hallados=[]
+    for m in re.finditer(r'https://[^\s<>\"\'`]+',str(texto or ''),re.I):
+        url=_url_publica_investigacion(m.group(0))
+        if url and url not in hallados:hallados.append(url)
+    return hallados
+
+
+def _prompt_busqueda_ia(caso):
+    return (f'Investiga el tema aeronáutico «{caso["titulo"]}», categoría «{caso["categoria"]}». '
+            f'Contexto: {caso.get("contexto", "")}. '
+            'Usa búsqueda web REAL para encontrar entre 5 y 9 páginas de fuentes diversificadas: '
+            'autoridades aeronáuticas de varios países, NASA, EUROCONTROL, OACI, EASA, '
+            'fabricantes, universidades, centros de investigación, publicaciones técnicas y prensa especializada. '
+            'No restrinjas la búsqueda a FAA ni inventes enlaces o hechos. '
+            'Prioriza fuentes primarias accesibles, artículos técnicos específicos y documentación de actualidad '
+            'solo cuando sea pertinente. Escribe URLs HTTPS completas, una por línea, '
+            'con título breve. NO aportes una conclusión sin enlaces; solo fuentes localizables.')
+
+
+def _descubrir_fuentes_gemini(caso):
+    """Gemini Grounding with Google Search (REST); devuelve URLs, no hechos verificados."""
+    import requests
+    from urllib.parse import quote
+    key=os.getenv('GEMINI_API_KEY','').strip()
+    if not key:raise RuntimeError('GEMINI_API_KEY no configurada')
+    endpoint=('https://generativelanguage.googleapis.com/v1beta/models/'
+              +quote(GEMINI_MODELO,safe='')+':generateContent')
+    payload={'contents':[{'parts':[{'text':_prompt_busqueda_ia(caso)}]}],
+             'tools':[{'googleSearch':{}}],
+             'generationConfig':{'temperature':0.25,'maxOutputTokens':1800}}
+    r=requests.post(endpoint,headers={'x-goog-api-key':key,'Content-Type':'application/json'},
+                    json=payload,timeout=(10,75))
+    if not r.ok:raise RuntimeError(f'Gemini Search HTTP {r.status_code}: {r.text[:180]}')
+    candidatos=r.json().get('candidates') or []
+    if not candidatos:raise RuntimeError('Gemini Search sin resultados')
+    fuentes=[]
+    for can in candidatos[:1]:
+        texto=' '.join(p.get('text','') for p in can.get('content',{}).get('parts',[]))
+        for url in _enlaces_de_texto_investigado(texto):fuentes.append((url,'Gemini Search'))
+        # Google entrega URLs con citas en groundingMetadata; son candidatos por verificar.
+        for chunk in (can.get('groundingMetadata') or {}).get('groundingChunks',[]):
+            web=chunk.get('web') or {}
+            url=_url_publica_investigacion(web.get('uri',''))
+            if url:fuentes.append((url,(web.get('title') or 'Gemini grounding')[:120]))
+    return fuentes
+
+
+def _descubrir_fuentes_groq(caso):
+    """Groq browser_search: API de búsqueda distinta a la generación JSON del guion."""
+    import requests
+    key=os.getenv('GROQ_API_KEY','').strip()
+    if not key:raise RuntimeError('GROQ_API_KEY no configurada')
+    payload={'model':GROQ_MODELO,'messages':[{'role':'user','content':_prompt_busqueda_ia(caso)}],
+             'temperature':0.2,'max_completion_tokens':2200,
+             'tools':[{'type':'browser_search'}],'tool_choice':'required',
+             'stream':False}
+    r=requests.post('https://api.groq.com/openai/v1/chat/completions',
+       headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},
+       json=payload,timeout=(10,100))
+    if not r.ok:raise RuntimeError(f'Groq Search HTTP {r.status_code}: {r.text[:180]}')
+    data=r.json(); texto='\n'.join(str(c.get('message',{}).get('content') or '')
+                          for c in data.get('choices',[]))
+    # No usar como evidencia el resumen producido por IA: solo URLs legibles.
+    return [(url,'Groq browser_search') for url in _enlaces_de_texto_investigado(texto)]
+
+
+def _descubrir_fuentes_ia(caso):
+    """Busca con IA en toda la web pública, con fallbacks sin dependencia exclusiva de FAA."""
+    modo=AERO_INVESTIGACION_WEB
+    if modo not in ('auto','gemini','groq','ambas','off'):
+        raise ValueError('AERO_INVESTIGACION_WEB: auto, gemini, groq, ambas u off')
+    if modo=='off':return [],[]
+    motores=({'auto':['gemini','groq'],'gemini':['gemini'],
+              'groq':['groq'],'ambas':['gemini','groq']}[modo])
+    encontrados=[]; errores=[]
+    for motor in motores:
+        try:
+            print(f'  Buscando fuentes en internet con {motor}...',flush=True)
+            propuestas=(_descubrir_fuentes_gemini(caso) if motor=='gemini'
+                       else _descubrir_fuentes_groq(caso))
+            print(f'  {motor}: {len(propuestas)} enlaces candidatos (sin verificar)',flush=True)
+            encontrados.extend(propuestas)
+            if modo=='auto' and len(encontrados)>=4:break
+        except Exception as exc:
+            msg=f'{motor}: {type(exc).__name__}: {str(exc)[:210]}'
+            errores.append(msg);print('  Búsqueda IA no disponible:',msg,flush=True)
+    unicos=[]; vistos=set()
+    for url,nombre in encontrados:
+        if url not in vistos and _url_publica_investigacion(url):
+            vistos.add(url);unicos.append((url,nombre))
+    return unicos[:AERO_BUSQUEDA_MAX_URLS],errores
+
+
+def investigar_episodio(caso, carpeta, session):
+    """Descubrimiento web IA -> descarga real -> extracción -> relevancia -> guion.
+
+    Las fuentes oficiales curadas son respaldo. Una URL sugerida por IA
+    nunca se considera evidencia hasta recuperar su contenido legible.
     """
     from urllib.parse import quote
     import xml.etree.ElementTree as ET
-    consultas=[]
-    for valor in AERO_IA_URLS.split('|'):
-        if valor.strip():consultas.append((valor.strip(),'Fuente adicional'))
-    consultas.extend((url,nombre) for nombre,url in _rutas_documentacion_oficial(caso))
+    consultas=[];documentos=[];vistos=set();rechazadas=[];errores_busqueda=[]
+    for url in AERO_IA_URLS.split('|'):
+        url=_url_publica_investigacion(url)
+        if url:consultas.append((url,'Fuente proporcionada por usuario'))
+    candidatas,errores_busqueda=_descubrir_fuentes_ia(caso)
+    consultas.extend(candidatas)
+    especificas=_rutas_documentacion_oficial(caso)
+    # Referencias curadas no se imponen: son respaldo cuando la búsqueda IA falla.
+    respaldo=[(url,nombre) for nombre,url in especificas]
     for item in caso.get('fuentes',[]):
         if isinstance(item,(list,tuple)) and len(item)>=2:
-            consultas.append((item[1],item[0]))
-    documentos=[];vistos=set();rechazadas=[]
+            respaldo.append((item[1],item[0]))
     def probar(url,nombre):
-        if url in vistos:return False
+        url=_url_publica_investigacion(url)
+        if not url or url in vistos:return False
         vistos.add(url)
         doc=_leer_documento_web(session,url,caso,nombre)
         if doc and doc['url'] not in {d['url'] for d in documentos}:
@@ -332,47 +477,55 @@ def investigar_episodio(caso, carpeta, session):
                   f"({len(doc['texto'])} caracteres)",flush=True)
             return True
         rechazadas.append(url[:200]);return False
-    # 1) Documentación técnica primero, sin depender de GDELT.
-    for url,nombre in consultas[:12]:
+    # Primero las fuentes encontradas por Gemini/Groq, de diversos dominios.
+    for url,nombre in consultas[:AERO_BUSQUEDA_MAX_URLS+5]:
         if len(documentos)>=5:break
-        if not probar(url,nombre) and 'faa.gov' in url and not url.lower().endswith('.pdf'):
-            for pdf,titulo in _descubrir_pdf_faa(session,url,caso):
+        probar(url,nombre)
+    # Si Gemini propuso suficientes enlaces pero ninguno se pudo leer, intentar
+    # Groq igualmente: la cantidad de URLs no equivale a evidencia verificable.
+    if AERO_INVESTIGACION_WEB=='auto' and len(documentos)<AERO_IA_MIN_FUENTES \
+            and os.getenv('GROQ_API_KEY','').strip() \
+            and not any(nombre=='Groq browser_search' for _,nombre in candidatas):
+        try:
+            print('  Sin fuentes legibles tras Gemini; probando Groq browser_search...',flush=True)
+            extra=_descubrir_fuentes_groq(caso)
+            for url,nombre in extra[:AERO_BUSQUEDA_MAX_URLS]:
                 if len(documentos)>=5:break
-                probar(pdf,'FAA: '+(titulo or nombre))
-    consultas_oficiales=list(consultas)
-    # 2) La actualidad complementa el manual; no condiciona la posibilidad de investigarlo.
-    if len(documentos)<2:
-        consulta=' '.join(caso.get('imagenes',[])[:1]).strip() or caso['titulo']
+                if url not in {u for u,_ in candidatas}:candidatas.append((url,nombre))
+                probar(url,nombre)
+        except Exception as exc:
+            errores_busqueda.append('Groq fallback: '+str(exc)[:180])
+    # Buscar respaldo si hay menos de dos fuentes completas y distintas.
+    if len(documentos)<max(2,AERO_IA_MIN_FUENTES):
+        for url,nombre in respaldo[:7]:
+            if len(documentos)>=4:break
+            if not probar(url,nombre) and 'faa.gov' in url and not url.lower().endswith('.pdf'):
+                for pdf,titulo in _descubrir_pdf_faa(session,url,caso):
+                    if len(documentos)>=4:break
+                    probar(pdf,'FAA: '+(titulo or nombre))
+    # Noticias solo complementarias; no depender de GDELT o enlaces RSS ilegibles.
+    if len(documentos)<AERO_IA_MIN_FUENTES:
+        consulta=(caso.get('imagenes') or [caso['titulo']])[0]
         try:
             gdelt=session.get('https://api.gdeltproject.org/api/v2/doc/doc',
                 params={'query':consulta+' aviation','mode':'artlist','format':'json',
                         'maxrecords':5,'timespan':'3months'},timeout=(5,9))
             if gdelt.ok:
                 for articulo in gdelt.json().get('articles',[])[:5]:
-                    url=articulo.get('url','')
-                    if url.startswith('https://'):
-                        consultas.append((url,articulo.get('title','Noticia aeronáutica')))
-            else:print('  GDELT opcional:',gdelt.status_code,flush=True)
-        except Exception as e:
-            print('  GDELT opcional no disponible:',str(e)[:110],flush=True)
-        for q in [consulta+' aviation',caso['titulo']+' aeronáutica']:
-            try:
-                url='https://news.google.com/rss/search?q='+quote(q)+'&hl=es-419&gl=US&ceid=US:es'
-                r=session.get(url,timeout=(5,9))
-                r.raise_for_status()
-                for item in ET.fromstring(r.content).findall('./channel/item')[:3]:
-                    link=(item.findtext('link') or '').strip()
-                    if link:consultas.append((link,(item.findtext('title') or 'Noticia')[:120]))
-            except Exception as e:
-                print('  RSS opcional no disponible:',str(e)[:90],flush=True)
-        for url,nombre in consultas[len(consultas_oficiales):len(consultas_oficiales)+12]:
-            if len(documentos)>=5:break
-            probar(url,nombre)
-    informe={'tema':caso['titulo'],'consultados':len(vistos),
-             'descartadas':rechazadas,'tokens_busqueda':sorted(_tokens_tema(caso)),
-             'fuentes_oficiales_prioritarias':[
-                 {'nombre':nombre,'url':url}
-                 for url,nombre in consultas_oficiales[:12]],
+                    probar(articulo.get('url',''),articulo.get('title','Noticia aeronáutica'))
+        except Exception as e:print('  GDELT opcional:',str(e)[:90],flush=True)
+        try:
+            q=quote(caso['titulo']+' aviación')
+            rss=session.get('https://news.google.com/rss/search?q='+q+'&hl=es-419&gl=US&ceid=US:es',timeout=(5,9))
+            rss.raise_for_status()
+            for item in ET.fromstring(rss.content).findall('./channel/item')[:4]:
+                probar(item.findtext('link') or '',item.findtext('title') or 'Noticia')
+        except Exception as e:print('  Google News opcional:',str(e)[:90],flush=True)
+    informe={'tema':caso['titulo'],'modo_investigacion':AERO_INVESTIGACION_WEB,
+             'candidatos_ia':[{'url':u,'origen':n} for u,n in candidatas],
+             'errores_busqueda_ia':errores_busqueda,
+             'consultados':len(vistos),'descartadas':rechazadas,
+             'tokens_busqueda':sorted(_tokens_tema(caso)),
              'fuentes':[{'id':d['id'],'nombre':d['nombre'],'url':d['url'],
                          'coincidencias_tema':d['coincidencias_tema'],
                          'extracto':d['texto'][:900]} for d in documentos]}
@@ -381,7 +534,7 @@ def investigar_episodio(caso, carpeta, session):
     if len(documentos)<AERO_IA_MIN_FUENTES:
         raise RuntimeError(f'Investigación insuficiente: {len(documentos)} fuentes legibles; '
                            f'mínimo {AERO_IA_MIN_FUENTES}. Consultar FUENTES_INVESTIGACION.json. '
-                           'No se usará el guion genérico ni se publicará.')
+                           'No se publicará un guion sin evidencia.')
     return documentos
 
 
