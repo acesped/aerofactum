@@ -43,6 +43,9 @@ jobs:
       AERO_VIDEOS_POR_EJECUCION: '1'
       AERO_TEMA: ${{ inputs.tema || 'aleatorio' }}
       AERO_IA_MODO: ${{ vars.AERO_IA_MODO || 'auto' }}
+      # Búsqueda web de Gemini / Groq sin limitarse a FAA.
+      AERO_INVESTIGACION_WEB: ${{ vars.AERO_INVESTIGACION_WEB || 'auto' }}
+      AERO_BUSQUEDA_MAX_URLS: ${{ vars.AERO_BUSQUEDA_MAX_URLS || '12' }}
       GEMINI_MODELO: ${{ vars.GEMINI_MODELO || 'gemini-3.8-flash' }}
       GROQ_MODELO: ${{ vars.GROQ_MODELO || 'openai/gpt-oss-120b' }}
       AERO_IA_MIN_FUENTES: ${{ vars.AERO_IA_MIN_FUENTES || '1' }}
