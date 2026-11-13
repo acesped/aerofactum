@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 3.2 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 3.3 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 Ninguna API de pago. CPU. Sin fotografías inventadas por IA.
@@ -473,27 +473,30 @@ def evaluar_relevancia_foto(caso, titulo, metadata, busqueda):
 
 
 def configurar_reintentos_wikimedia(session):
-    """Reintenta fallos transitorios de Wikimedia sin repetir errores permanentes.
+    """Consultas respetuosas de los límites Wikimedia: sin reintentar HTTP 429.
 
-    Solo se aplica a los dominios Wikimedia utilizados por la búsqueda
-    y descarga de fotografías. Mantiene la sesión y los metadatos originales.
+    La sesión puede haber sido configurada para otras fuentes oficiales.
+    Aquí se usa un adaptador específico de Commons que evita reintentos
+    agresivos y una identificación clara de la aplicación con su sitio público.
     """
     from requests.adapters import HTTPAdapter
     from urllib3.util.retry import Retry
     reintentos = Retry(
-        total=3,
-        connect=3,
-        read=2,
-        status=3,
-        backoff_factor=1.0,
-        status_forcelist=(429, 500, 502, 503, 504),
+        total=1, connect=1, read=0, status=1,
+        backoff_factor=1.5,
+        status_forcelist=(500, 502, 503, 504),
         allowed_methods=frozenset({'GET'}),
         respect_retry_after_header=True,
         raise_on_status=False,
     )
-    adaptador = HTTPAdapter(max_retries=reintentos, pool_connections=4, pool_maxsize=4)
+    adaptador = HTTPAdapter(max_retries=reintentos, pool_connections=2, pool_maxsize=2)
     session.mount('https://commons.wikimedia.org/', adaptador)
     session.mount('https://upload.wikimedia.org/', adaptador)
+    # No simular que somos un navegador: Wikimedia exige un agente reconocible.
+    session.headers['User-Agent'] = (
+        'AEROFACTUM-Bot/3.3 (https://acesped.github.io/aerofactum/; '
+        'ari.cesped@gmail.com) python-requests'
+    )
     return session
 
 
@@ -509,16 +512,28 @@ def buscar_fotos(caso,session,carpeta):
     # Las consultas específicas y contextuales ya las aporta _consultas_fotos.
     caso_id=(caso.get('_episodio') or {}).get('caso_id','')
     # Consultas de respaldo dirigidas al fenómeno, NO a temas científicos genéricos.
-    queries=list(dict.fromkeys(queries))
+    queries=list(dict.fromkeys(queries))[:6]
     api='https://commons.wikimedia.org/w/api.php'
     candidatos=[];titulos_vistos=set()
-    for busqueda in queries:
+    rate_limitado = False
+    for i_busqueda, busqueda in enumerate(queries):
+        if i_busqueda:
+            time.sleep(1.5)  # Evitar ráfagas a la API de Wikimedia
         try:
             params=dict(action='query',format='json',generator='search',
-                        gsrsearch=busqueda,gsrnamespace=6,gsrlimit=24,
+                        gsrsearch=busqueda,gsrnamespace=6,gsrlimit=12,
                         prop='imageinfo',iiprop='url|extmetadata',iiurlwidth=2200)
-            resp=session.get(api,params=params,timeout=30,
-                             headers={'User-Agent':'Aerofactum/2.2 (topic image validation)'})
+            resp=session.get(api,params=params,timeout=(8,16))
+            if resp.status_code == 429:
+                rate_limitado = True
+                espera = resp.headers.get('Retry-After', 'no especificado')
+                aviso = (f'Wikimedia Commons respondió HTTP 429. Se detienen todas las búsquedas '
+                         f'para respetar su límite. Retry-After: {espera}. '
+                         'No se fuerza la publicación sin fotografías válidas.')
+                print('  ' + aviso, flush=True)
+                descartes.append({'busqueda':busqueda,'razon':'HTTP 429; búsqueda detenida',
+                                  'retry_after':str(espera)})
+                break
             resp.raise_for_status()
             paginas=resp.json().get('query',{}).get('pages',{})
             for page in paginas.values():
@@ -549,12 +564,20 @@ def buscar_fotos(caso,session,carpeta):
             descartes.append({'busqueda':busqueda,'razon':'Error de consulta a Wikimedia Commons',
                               'detalle':motivo})
             print('  Búsqueda Commons falló:',busqueda,'|',motivo[:150],flush=True)
+    if rate_limitado and not candidatos:
+        (carpeta/'AVISO_WIKIMEDIA_429.txt').write_text(
+            'Wikimedia Commons limitó el acceso HTTP 429. No insistir con más búsquedas; '
+            'reprogramar la ejecución o utilizar fotografías ya verificadas con licencias y atribución.\n',
+            encoding='utf-8')
     candidatos.sort(key=lambda item:item[0],reverse=True)
     for puntos,archivo,info,url,matches,busqueda in candidatos:
         if len(fotos)>=MAX_IMAGENES:break
         try:
-            r=session.get(url,timeout=35,
-                          headers={'User-Agent':'Aerofactum/2.2 (educational media retrieval)'})
+            r=session.get(url,timeout=(8,20))
+            if r.status_code == 429:
+                print('  Wikimedia limitó también la descarga de fotos (HTTP 429).',flush=True)
+                descartes.append({'archivo':archivo,'razon':'HTTP 429 en descarga'})
+                break
             r.raise_for_status()
             if len(r.content)>22_000_000:continue
             im=Image.open(BytesIO(r.content))
