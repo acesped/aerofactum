@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 3.1 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 3.2 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 Ninguna API de pago. CPU. Sin fotografías inventadas por IA.
@@ -23,7 +23,7 @@ EVITAR_REPETICIONES = True     # requiere historial en Drive para persistir entr
 REINICIAR_CATALOGO_AL_AGOTAR = False
 FOTOGRAMAS_POR_SEGUNDO = 15
 ANCHO, ALTO = 1920, 1080        # render nativo Full HD para exportación 1080p real
-IMAGENES_MINIMAS = 4            # objetivo visual; buscará imágenes adicionales si faltan
+IMAGENES_MINIMAS = 4            # mínimo de fotografías inequívocamente aeronáuticas
 IMAGENES_MINIMAS_ABSOLUTAS = 1 # mínimo para crear borradores privados; publicación no privada exige IMAGENES_MINIMAS
 MAX_IMAGENES = 10
 VERIFICACION_OBLIGATORIA = False # si True, detiene cuando no hay referencias oficiales accesibles
@@ -428,33 +428,49 @@ def _anclas_visuales(caso):
         anclas |= _tokens_visuales(alias)
     return anclas
 
+# Exigir un objeto o contexto aeronáutico identificable en el NOMBRE del archivo.
+# Categorías enormes de Commons pueden contener etiquetas irrelevantes y no bastan.
+AVIACION_EN_TITULO = re.compile(
+    r"\b(?:aircraft|aeroplane|airplane|airliner|airlines?|airbus|boeing|"
+    r"embraer|bombardier|cessna|beechcraft|fokker|turboprop|turbofan|"
+    r"airport|airfield|airstrip|airway|flightdeck|cockpit|aircrew|"
+    r"helicopter|rotorcraft|aeropuerto|aeronave|avion|aviacion|"
+    r"runway|taxiway|airtraffic|atc|hangar|a380|a320|a350|b737|b747|b777|b787|"
+    r"winglet|landinggear|flaps|slats|"
+    r"jetengine|jetliner|airplaneengine|plane|propeller|"
+    r"airfieldcontrol|controltower)\b", re.I)
+
+# Si el nombre no menciona el sector aeronáutico, se descarta, aun cuando
+# una categoría general o la búsqueda haga parecer pertinente el resultado.
 def evaluar_relevancia_foto(caso, titulo, metadata, busqueda):
-    """Puntúa coincidencias del CASO en título o descripción/categorías.
-    Nunca se asigna una imagen sólo porque apareció en una búsqueda amplia.
+    """Filtro estricto basado en el nombre y los metadatos, sin fingir visión de IA.
+
+    Requiere evidencia aeronáutica en el título y conexión con las anclas del
+    episodio. Falsos negativos son preferibles a publicar fotografías ajenas.
     """
-    titulo_n=_normalizar_texto_foto(titulo.replace('File:',''))
-    metatexto=' '.join(limpiar_html(metadata.get(k,{}).get('value',''))
-                       for k in ('ImageDescription','ObjectName','Categories'))
-    meta_n=_normalizar_texto_foto(metatexto[:18000])
-    anclas=_anclas_visuales(caso)
-    directas=anclas.intersection(set(titulo_n.split()))
-    extras=anclas.intersection(set(meta_n.split()))
-    # La coincidencia de título importa 3 veces más que un término disperso
-    # en la descripción. No puntuar por coincidir con palabras vagas.
-    puntos=3*len(directas)+len(extras)
-    consulta=_tokens_visuales(busqueda)
-    coincidencias_consulta=consulta.intersection(set(titulo_n.split()))
-    puntos+=len(coincidencias_consulta)
-    # Impedir aceptación por palabras únicas genéricas.
-    # Título que menciona solo 'aircraft' no basta; usar dos anclas concretas.
-    relevantes=(directas|extras)
-    if len(relevantes)<2:
+    titulo_n = _normalizar_texto_foto(titulo.replace('File:', ''))
+    titulo_l = titulo_n.strip()
+    if not AVIACION_EN_TITULO.search(titulo_l):
         return 0, []
-    if not directas and len(extras)<3:
+    metatexto = ' '.join(limpiar_html(metadata.get(k, {}).get('value', ''))
+                         for k in ('ImageDescription', 'ObjectName', 'Categories'))
+    meta_n = _normalizar_texto_foto(metatexto[:18000])
+    anclas = _anclas_visuales(caso)
+    tokens_titulo = set(titulo_n.split())
+    tokens_meta = set(meta_n.split())
+    directas = anclas.intersection(tokens_titulo)
+    extras = anclas.intersection(tokens_meta)
+    relevantes = directas | extras
+    # La única referencia directa a 'aircraft' o 'airport' no basta: exigir
+    # evidencia contextual y coincidencia fuerte con el tema actual.
+    if len(relevantes) < 2 or len(directas) < 1:
         return 0, []
-    if puntos<4:
+    puntos = 4 * len(directas) + len(extras)
+    puntos += len(_tokens_visuales(busqueda).intersection(tokens_titulo))
+    if puntos < 7:
         return 0, []
-    return puntos, sorted(directas|extras)
+    return puntos, sorted(relevantes)
+
 
 def configurar_reintentos_wikimedia(session):
     """Reintenta fallos transitorios de Wikimedia sin repetir errores permanentes.
@@ -955,7 +971,17 @@ def miniatura(caso,fotos,carpeta):
     draw.text((x+3,sub_y+3),subtitulo_txt,font=sub_font,fill='#000000',stroke_width=7,stroke_fill='#000000')
     draw.text((x,sub_y),subtitulo_txt,font=sub_font,fill='#FFFFFF',stroke_width=3,stroke_fill='#09111E')
     destino=carpeta/'miniatura.jpg'
-    im.convert('RGB').save(destino,quality=96,optimize=True,subsampling=0)
+    # YouTube thumbnails: 16:9, 1280x720 y máximo 2 MB (API).
+    # El JPG anterior Full HD, quality=96, frecuentemente superaba 2 MB.
+    from PIL import ImageOps
+    portada = ImageOps.fit(im.convert('RGB'), (1280,720), method=Image.Resampling.LANCZOS)
+    for calidad in (90, 84, 76, 68, 58):
+        portada.save(destino, format='JPEG', quality=calidad, optimize=True, progressive=False)
+        if destino.stat().st_size <= 1_850_000:
+            break
+    if destino.stat().st_size > 2_000_000:
+        raise RuntimeError('La miniatura supera 2 MB incluso tras comprimirla.')
+    print('Miniatura validada: 1280x720,', destino.stat().st_size, 'bytes', flush=True)
     (carpeta/'TEXTO_MINIATURA.txt').write_text(titulo_txt+'\nSUBTITULO: '+subtitulo_txt+'\nIMAGEN: '+str(imagen),encoding='utf-8')
     return destino
 
@@ -996,14 +1022,40 @@ def obtener_icono_like(carpeta, session=None):
                            f'Página: {LIKE_PAGE_URL} | Error: {exc}') from exc
 
 def crear_cta_base(carpeta):
-    from PIL import Image,ImageDraw,ImageFont
-    tarjeta=Image.new('RGB',(ANCHO,ALTO),'#000000')
-    d=ImageDraw.Draw(tarjeta)
-    d.rounded_rectangle((120,760,1800,1015),radius=42,fill=(15,22,34),outline=(255,255,255),width=3)
-    f=cargar_fuente(132)
-    escribir_en_caja(d,'Dale Like y Suscríbete!',(170,790,1750,995),f,'#FFFFFF',2,interlinea=1.0,stroke_width=4,stroke_fill='#0A1423',centrar_vertical=True)
-    ruta=carpeta/'cta_bg.png'; tarjeta.save(ruta)
+    """CTA centrado y contenido EN el recuadro oscuro, nunca fuera de él."""
+    from PIL import Image, ImageDraw
+    tarjeta = Image.new('RGB', (ANCHO, ALTO), '#000000')
+    d = ImageDraw.Draw(tarjeta)
+    # El icono parpadeante está encima del panel; el texto completo va dentro.
+    caja = (105, 710, ANCHO-105, ALTO-58)
+    d.rounded_rectangle(caja, radius=40, fill=(15,22,34),
+                        outline=(255,255,255), width=4)
+    texto = 'Dale Like y Suscríbete!'
+    x0,y0,x1,y1 = 145, 745, ANCHO-145, ALTO-92
+    # Medir el texto realmente. Nunca truncarlo ni sobrepasar el panel.
+    elegido = None
+    for tam in range(128, 35, -2):
+        fuente = cargar_fuente(tam)
+        bbox = d.textbbox((0,0), texto, font=fuente, stroke_width=3)
+        ancho,alto = bbox[2]-bbox[0], bbox[3]-bbox[1]
+        if ancho <= x1-x0 and alto <= y1-y0:
+            elegido = (fuente,bbox,ancho,alto)
+            break
+    if elegido is None:
+        raise RuntimeError('CTA: no cabe el texto en su panel.')
+    fuente,bbox,ancho,alto = elegido
+    x = (ANCHO-ancho)//2-bbox[0]
+    y = (y0+y1-alto)//2-bbox[1]
+    d.text((x,y), texto, font=fuente, fill='#FFFFFF',
+           stroke_width=3, stroke_fill='#0A1423')
+    # Validación física del encuadre tipográfico.
+    fin = d.textbbox((x,y), texto, font=fuente, stroke_width=3)
+    if fin[0] < caja[0]+15 or fin[2] > caja[2]-15 or fin[1] < caja[1]+15 or fin[3] > caja[3]-15:
+        raise RuntimeError('CTA: texto fuera del contenedor.')
+    ruta = carpeta/'cta_bg.png'
+    tarjeta.save(ruta)
     return ruta
+
 
 def renderizar_clips(bloques,fotos,caso,carpeta):
     """Montaje con cambio de plano cada 8-12 s para evitar una foto estática
@@ -1166,25 +1218,46 @@ def subir_reanudable(solicitud, descripcion):
     return respuesta
 
 
-def descripcion_youtube(caso,fuentes,creditos):
-    """Créditos de fotografías dentro de YouTube, no solo en archivos locales."""
-    parrafos=[
-        f"{caso['titulo']} | AEROFACTUM",
-        '',
-        'Conocimientos técnicos, financieros y operacionales de la industria aeronáutica.',
-        'Material divulgativo. No sustituye documentación aeronáutica aprobada, procedimientos ni normas vigentes.',
-        'REVISIÓN TÉCNICA DE CONTENIDO PENDIENTE: contrasta cada afirmación con manuales y fuentes vigentes.',
-        '', 'FUENTES DE REFERENCIA (no constituyen verificación individual de afirmaciones):']
+def descripcion_youtube(caso, fuentes, creditos):
+    """Descripción limpia con >= 10 hashtags; atribución requerida sin encabezado antiguo."""
+    categoria = _normalizar_texto_foto(caso.get('categoria','')).strip().replace(' ','')
+    etiquetas = [
+        'AEROFACTUM','Aviacion','Aeronautica','AviacionCivil','IndustriaAeronautica',
+        'Pilotos','Aviones','Aeronaves','SeguridadAerea','CulturaAeronautica',
+        'TecnologiaAeronautica','AprendeAviacion','Aviation','AviationLovers',
+    ]
+    if categoria:
+        etiquetas.append(''.join(t.capitalize() for t in categoria.split()))
+    etiquetas = list(dict.fromkeys(etiquetas))
+    parrafos = [
+        f"{caso['titulo']} | AEROFACTUM", '',
+        'Descubre cómo funciona la aviación: tecnología, operaciones y decisiones que hay detrás de cada vuelo.',
+        'Contenido divulgativo. Para operaciones reales consulta la documentación aeronáutica vigente.',
+        '', 'FUENTES DE REFERENCIA:',
+    ]
     for f in fuentes:
         parrafos.append(f"- {f.get('nombre','Fuente')}: {f.get('url','')}")
-    parrafos += ['', 'FOTOGRAFÍAS Y CRÉDITOS (Wikimedia Commons):']
+    # CC BY y CC BY-SA requieren atribución. Se suprime el encabezado
+    # "FOTOGRAFÍAS Y CRÉDITOS (Wikimedia Commons)" solicitado, pero no
+    # se omiten las atribuciones legalmente necesarias.
+    atribuciones = []
     for c in creditos:
-        parrafos.append(f"- {c.get('titulo','Foto')} · Autor: {c.get('autor','No indicado')} · {c.get('licencia','Licencia')} · {c.get('pagina','')} · {c.get('licencia_url','')}")
-    parrafos+=['','#AEROFACTUM #Aviación #Pilotos #SeguridadAérea']
-    texto='\n'.join(parrafos).replace('\\n','\n')
-    if len(texto)>4900:
-        # No perder atribuciones: impedir publicar antes que recortar créditos obligatorios.
-        raise RuntimeError('La descripción y créditos superan el límite seguro de YouTube (4900 caracteres). Revisar metadatos.')
+        licencia = c.get('licencia','').strip()
+        licnorm = licencia.lower().replace(' ','')
+        if ('cc-by' in licnorm or 'cc by' in licencia.lower() or
+                'attribution' in licencia.lower() or 'sharealike' in licencia.lower()):
+            atribuciones.append(
+                f"{c.get('titulo','Imagen')} — {c.get('autor','Autor no identificado')} "
+                f"({licencia}): {c.get('pagina','')} {c.get('licencia_url','')}"
+            )
+    if atribuciones:
+        parrafos += ['', 'Atribuciones de material con licencia:', *atribuciones]
+    parrafos += ['', ' '.join('#'+h for h in etiquetas)]
+    texto = '\n'.join(parrafos)
+    if len(texto) > 4900:
+        raise RuntimeError('Descripción supera 4900 caracteres. Revisar atribuciones obligatorias sin recortarlas.')
+    if sum(1 for x in texto.split() if x.startswith('#')) < 10:
+        raise RuntimeError('La descripción requiere al menos diez hashtags.')
     return texto
 
 
@@ -1203,6 +1276,58 @@ def escribir_registro_publicacion(historial,episodio,caso,video_id,carpeta,estad
     temp.replace(historial)
     (carpeta/'PUBLICACION_YOUTUBE.json').write_text(json.dumps(existente,ensure_ascii=False,indent=2),encoding='utf-8')
     return existente
+
+
+def subir_miniatura_con_reintentos(servicio, video_id, miniatura, carpeta):
+    """Reintenta errores transitorios, comunica causas permanentes y valida JPG.
+
+    Nunca convierte un rechazo de miniatura en falso éxito.
+    """
+    from googleapiclient.http import MediaFileUpload
+    from googleapiclient.errors import HttpError
+    from PIL import Image
+    ruta = Path(miniatura)
+    if not ruta.is_file():
+        raise FileNotFoundError(f'No existe la miniatura: {ruta}')
+    with Image.open(ruta) as im:
+        im.verify()
+    with Image.open(ruta) as im:
+        if im.format != 'JPEG' or im.size != (1280, 720):
+            raise ValueError(f'Miniatura inválida: {im.format}, {im.size}. Se requiere JPG 1280x720.')
+    if ruta.stat().st_size > 2_000_000:
+        raise ValueError('La miniatura supera el límite de 2 MB de YouTube.')
+    ultimo_error = None
+    for intento in range(1, 7):
+        try:
+            servicio.thumbnails().set(
+                videoId=video_id,
+                media_body=MediaFileUpload(str(ruta),mimetype='image/jpeg',resumable=False)
+            ).execute(num_retries=2)
+            (carpeta/'MINIATURA_YOUTUBE.json').write_text(
+                json.dumps({'video_id':video_id,'estado':'correcto',
+                            'archivo':ruta.name,'bytes':ruta.stat().st_size},ensure_ascii=False,indent=2),
+                encoding='utf-8')
+            print('Miniatura personalizada confirmada en YouTube.',flush=True)
+            return
+        except Exception as exc:
+            ultimo_error = exc
+            codigo = getattr(getattr(exc,'resp',None),'status',None)
+            try: cuerpo = exc.content.decode('utf-8','replace')[:800]
+            except Exception: cuerpo = str(exc)[:800]
+            print(f'  Miniatura intento {intento}/6: HTTP {codigo}: {cuerpo}',flush=True)
+            permanente = codigo in (401,403) or (codigo == 400 and
+                not any(t in cuerpo.lower() for t in ('processing','not ready','not found','try again')))
+            if permanente or intento == 6:
+                break
+            time.sleep(min(35,3*intento**1.5))
+    mensaje = str(ultimo_error)
+    if getattr(getattr(ultimo_error,'resp',None),'status',None)==403:
+        mensaje += (' | Comprueba la verificación/eligibilidad de miniaturas '
+                    'personalizadas del canal y la autorización OAuth de YouTube.')
+    (carpeta/'MINIATURA_YOUTUBE.json').write_text(
+        json.dumps({'video_id':video_id,'estado':'fallo','detalle':mensaje[:1200]},
+                   ensure_ascii=False,indent=2), encoding='utf-8')
+    raise RuntimeError('La miniatura NO se publicó: '+mensaje[:700])
 
 
 def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,historial):
@@ -1231,12 +1356,10 @@ def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,
     print('YouTube: video registrado:',video_id,flush=True)
     errores=[]
     try:
-        servicio.thumbnails().set(videoId=video_id,
-            media_body=MediaFileUpload(str(miniatura),mimetype='image/jpeg')).execute()
-        print('Miniatura personalizada subida correctamente.',flush=True)
+        subir_miniatura_con_reintentos(servicio,video_id,miniatura,carpeta)
     except Exception as e:
         errores.append('miniatura: '+str(e)[:500])
-        print('AVISO: falló la miniatura; el video ya existe:',e,flush=True)
+        print('ERROR: video existente, pero falta miniatura:',e,flush=True)
     try:
         # SRT como pista propia; los subtítulos ya están incrustados en el MP4 salvo en CTA.
         servicio.captions().insert(part='snippet',body={'snippet':{
@@ -1248,22 +1371,23 @@ def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,
         print('AVISO: falló SRT; el video ya existe:',e,flush=True)
     estado='completo' if not errores else 'pendiente: '+' | '.join(errores)
     escribir_registro_publicacion(historial,episodio,caso,video_id,carpeta,estado)
+    if any(err.startswith('miniatura:') for err in errores):
+        raise RuntimeError('El video ya se subió a YouTube (ID '+video_id+
+                           '), pero la miniatura no se completó. NO vuelvas a subir '
+                           'el video como uno nuevo; revisa MINIATURA_YOUTUBE.json '
+                           'o carga la miniatura existente desde YouTube Studio. '+
+                           ' | '.join(errores))
     return video_id
 
 # ====================== METADATOS Y PUBLICACIÓN ===================
 def guardar_metadatos(caso,bloques,fuentes,creditos,carpeta):
     contenido='\n'.join(f"{i+1}. {b['texto']}" for i,b in enumerate(bloques))
     (carpeta/'GUION_COMPLETO.txt').write_text(contenido,encoding='utf-8')
-    desc=(caso['titulo']+'\n\nAEROFACTUM explica conocimientos técnicos, operacionales y económicos de la aviación. '
-          'Material educativo: no sustituye documentación aprobada ni normativa vigente.\n\n'
-          'Bibliografía orientativa (se debe verificar cada afirmación con la edición y sección aplicable):\n'+
-          '\n'.join(f"- {x['nombre']}: {x['url']} (accesibilidad: {x['status']}; hechos aún por contrastar)" for x in fuentes)+
-          '\n\nCréditos de imágenes: CREDITOS_Y_LICENCIAS.txt y creditos_imagenes.json.\n'
-          'ESTADO EDITORIAL: REVISIÓN TÉCNICA PENDIENTE ANTES DE PUBLICAR.\n'
-          '#Aerofactum #Aviación #Pilotos #IndustriaAeronáutica #SeguridadAérea')
-    (carpeta/'TITULO_Y_DESCRIPCION.txt').write_text(desc,encoding='utf-8')
+    (carpeta/'TITULO_Y_DESCRIPCION.txt').write_text(
+        descripcion_youtube(caso,fuentes,creditos), encoding='utf-8')
     (carpeta/'manifest.json').write_text(json.dumps(dict(titulo=caso['titulo'],categoria=caso['categoria'],
         estado=caso['estado'],fuentes=fuentes,creditos=creditos,bloques=bloques),ensure_ascii=False,indent=2),encoding='utf-8')
+
 
 def guardar_drive(carpeta):
     if not SALIDA_EN_DRIVE:return
