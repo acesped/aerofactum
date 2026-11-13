@@ -49,7 +49,6 @@ for ficha in DATOS_AERONAUTICOS:
         gancho=f'En aeronáutica, una idea puede transformar cómo se comprende un vuelo. Hoy investigamos: {titulo}.',
         contexto=idea, pistas=[idea], hechos=[idea],
         giro='La utilidad del concepto depende del contexto operacional y del diseño de la aeronave. '+idea,
-        limite='Este contenido es educativo. No sustituye manuales aprobados, procedimientos del operador, cálculos de performance ni requisitos regulatorios aplicables.',
         importancia='Comprender esta idea permite hacer mejores preguntas y evaluar datos técnicos con más criterio.',
         cierre='En AEROFACTUM estudiamos el conocimiento detrás de cada vuelo.',
         fuentes=[(nombre,url,anclas)], imagenes=list(dict.fromkeys(ficha['imagenes'])),
@@ -86,7 +85,6 @@ def plan_guion_episodio(caso,episodio):
         ('analisis',f'Esta es una pregunta útil para estudiar el tema: {pregunta} La respuesta específica cambia según el equipo, el tipo de operación y la documentación correspondiente.'),
         ('evidencia',f'El dato clave que debemos conservar es el siguiente. {idea} Este principio no reemplaza los valores, tablas o limitaciones de un modelo concreto.'),
         ('aplicacion',f'¿Para qué sirve aprenderlo? {caso["importancia"]} Conviene contrastarlo con un manual vigente o una publicación técnica de la autoridad competente.'),
-        ('limites',caso['limite']),
         ('conclusion',f'En resumen, {idea} Consulta las referencias oficiales indicadas en la descripción y comprueba sus ediciones vigentes. AEROFACTUM: el conocimiento detrás de cada vuelo.'),
         ('cta','Si aprendiste algo útil, dale Like y comparte. Suscríbete a AEROFACTUM para seguir explorando la industria aeronáutica.'),
     ]
@@ -711,7 +709,6 @@ def plan_guion(caso):
     trozos.append(('hipotesis','Llegados a este punto conviene preguntarse qué explicación puede acomodar todas las pistas sin exigir fenómenos inventados. La hipótesis más llamativa no siempre es la que tiene mejores pruebas. Una investigación rigurosa distingue entre coincidencia, inferencia y observación directa.'))
     trozos.append(('revelacion',caso['giro']))
     trozos.append(('evidencia','Repasemos lo que sí puede comprobarse. '+' '.join('Pista número '+str(i+1)+': '+x+'.' for i,x in enumerate(caso['hechos']))))
-    trozos.append(('limites',caso['limite']))
     trozos.append(('significado',caso['importancia']))
     trozos.append(('conclusion',caso['cierre']+' ¿Qué otra pregunta aeronáutica te gustaría investigar? Te leo en los comentarios.'))
     trozos.append(('cta','Si te gustó este fascinante tema, dale like y suscríbete para seguir recibiendo esta interesante información'))
