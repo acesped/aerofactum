@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 4.7 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 4.8 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
@@ -141,6 +141,8 @@ def _tokens_tema(caso):
         'atc_05':{'runway selection','runway in use','active runway',
                   'runway use','crosswind','tailwind','wind','controller-in-charge',
                   'runway'},
+        'safe_10':{'go-around','go around','missed approach','rejected landing',
+                   'stabilized approach','stabilised approach','approach','landing','goarounds'},
         'future_05':{'composite','composites','advanced composite materials',
                      'carbon fiber','carbon fibre','fiber reinforced','fiberglass',
                      'laminate','lightweight','weight','corrosion','damage tolerance',
@@ -288,6 +290,13 @@ def _rutas_documentacion_oficial(caso):
          'https://www.nasa.gov/directorates/armd/aavp/hicam/about-hicam/'),
         ('FAA: Reparaciones y alteraciones de estructuras compuestas',
          'https://www.faa.gov/regulations_policies/advisory_circulars/index.cfm/go/document.information/documentid/1029806')],
+      'safe_10':[
+        ('EASA: Approach and landing safety — go-around',
+         'https://www.easa.europa.eu/en/domains/general-aviation/flying-safely/loss-of-control-in-approach-and-landing'),
+        ('FAA: AIM Arrival Procedures — missed approaches',
+         'https://www.faa.gov/air_traffic/publications/aim_html/chap5_section_4.html'),
+        ('FAA: Air Traffic Control — missed approach',
+         'https://www.faa.gov/air_traffic/publications/atpubs/atc_html/chap4_section_8.html')],
       'atc_05':[
         ('FAA JO 7110.65: Runway Selection, sección 3-5',
          'https://www.faa.gov/air_traffic/publications/atpubs/atc_html/chap3_section_5.html'),
@@ -445,6 +454,40 @@ def _descubrir_fuentes_ia(caso):
     return unicos[:AERO_BUSQUEDA_MAX_URLS],errores
 
 
+def _descubrir_fuentes_rss(session, caso):
+    """Descubrimiento web independiente de las cuotas de Gemini y Groq.
+
+    Bing RSS es solo un índice de URLs candidatas. Se exige descargar y
+    validar la fuente original antes de emplearla como evidencia.
+    """
+    import xml.etree.ElementTree as ET
+    consultas=[caso.get('titulo','') + ' aviation',
+               ' '.join((caso.get('imagenes') or [])[:1]) + ' aviation safety']
+    tema_id=caso.get('_episodio',{}).get('caso_id',caso.get('id',''))
+    if tema_id=='safe_10':
+        consultas=['go around rejected landing aviation safety EASA FAA',
+                   'go around stabilised approach flight safety']
+    urls=[]; errores=[]; vistos=set()
+    for consulta in consultas[:2]:
+        try:
+            r=session.get('https://www.bing.com/search',
+                          params={'q':consulta,'format':'rss'},
+                          timeout=(5,11), headers={
+                              'User-Agent':'AEROFACTUM/4.8 (+https://acesped.github.io/aerofactum/)'
+                          })
+            r.raise_for_status()
+            raiz=ET.fromstring(r.content)
+            for item in raiz.findall('.//item')[:8]:
+                url=_url_publica_investigacion(item.findtext('link'))
+                if not url or url in vistos or 'bing.com' in urlparse(url).hostname:
+                    continue
+                vistos.add(url)
+                urls.append((url,(item.findtext('title') or 'Búsqueda web')[:120]))
+        except Exception as exc:
+            errores.append('Bing RSS: '+type(exc).__name__+': '+str(exc)[:110])
+    return urls[:AERO_BUSQUEDA_MAX_URLS], errores
+
+
 def investigar_episodio(caso, carpeta, session):
     """Descubrimiento web IA -> descarga real -> extracción -> relevancia -> guion.
 
@@ -459,6 +502,11 @@ def investigar_episodio(caso, carpeta, session):
         if url:consultas.append((url,'Fuente proporcionada por usuario'))
     candidatas,errores_busqueda=_descubrir_fuentes_ia(caso)
     consultas.extend(candidatas)
+    # Descubrimiento independiente: no usar el LLM como único buscador.
+    # Consultar también si el proveedor de IA está sin cuota o temporalmente caído.
+    candidatas_rss,errores_rss=_descubrir_fuentes_rss(session,caso)
+    errores_busqueda.extend(errores_rss)
+    consultas.extend(candidatas_rss)
     especificas=_rutas_documentacion_oficial(caso)
     # Referencias curadas no se imponen: son respaldo cuando la búsqueda IA falla.
     respaldo=[(url,nombre) for nombre,url in especificas]
@@ -485,6 +533,7 @@ def investigar_episodio(caso, carpeta, session):
     # Groq igualmente: la cantidad de URLs no equivale a evidencia verificable.
     if AERO_INVESTIGACION_WEB=='auto' and len(documentos)<AERO_IA_MIN_FUENTES \
             and os.getenv('GROQ_API_KEY','').strip() \
+            and not any('groq:' in error.lower() for error in errores_busqueda) \
             and not any(nombre=='Groq browser_search' for _,nombre in candidatas):
         try:
             print('  Sin fuentes legibles tras Gemini; probando Groq browser_search...',flush=True)
@@ -495,7 +544,7 @@ def investigar_episodio(caso, carpeta, session):
                 probar(url,nombre)
         except Exception as exc:
             errores_busqueda.append('Groq fallback: '+str(exc)[:180])
-    # Buscar respaldo si hay menos de dos fuentes completas y distintas.
+    # Buscar fuentes curadas del tema ANTES de depender de noticias o RSS rotos.
     if len(documentos)<max(2,AERO_IA_MIN_FUENTES):
         for url,nombre in respaldo[:7]:
             if len(documentos)>=4:break
@@ -523,6 +572,7 @@ def investigar_episodio(caso, carpeta, session):
         except Exception as e:print('  Google News opcional:',str(e)[:90],flush=True)
     informe={'tema':caso['titulo'],'modo_investigacion':AERO_INVESTIGACION_WEB,
              'candidatos_ia':[{'url':u,'origen':n} for u,n in candidatas],
+             'candidatos_rss':[{'url':u,'origen':n} for u,n in candidatas_rss],
              'errores_busqueda_ia':errores_busqueda,
              'consultados':len(vistos),'descartadas':rechazadas,
              'tokens_busqueda':sorted(_tokens_tema(caso)),
