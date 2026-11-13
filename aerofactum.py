@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 3.4 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 4.0 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
-Ninguna API de pago. CPU. Sin fotografías inventadas por IA.
+IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
 
 Ejecución: python aerofactum.py. En GitHub Actions, ejecución cron automatizada.
 """
@@ -28,6 +28,14 @@ IMAGENES_MINIMAS_ABSOLUTAS = 1 # mínimo para crear borradores privados; publica
 MAX_IMAGENES = 10
 VERIFICACION_OBLIGATORIA = False # si True, detiene cuando no hay referencias oficiales accesibles
 OUTPUT_BASE = Path(os.getenv('AERO_OUTPUT_DIR', '/content/AEROFACTUM' if Path('/content').exists() else 'output/AEROFACTUM'))
+# Guion investigado: Gemini primero, Groq segundo. Nunca usar plantillas si fallan.
+AERO_IA_MODO = os.getenv('AERO_IA_MODO', 'auto').strip().lower()
+GEMINI_MODELO = os.getenv('GEMINI_MODELO', 'gemini-2.5-flash')
+GROQ_MODELO = os.getenv('GROQ_MODELO', 'openai/gpt-oss-120b')
+AERO_IA_MIN_FUENTES = max(1, int(os.getenv('AERO_IA_MIN_FUENTES', '1')))
+AERO_IA_MIN_DATOS = max(2, int(os.getenv('AERO_IA_MIN_DATOS', '3')))
+AERO_IA_DRY_RUN = os.getenv('AERO_IA_DRY_RUN', 'false').lower() == 'true'
+AERO_IA_URLS = os.getenv('AERO_IA_URLS', '').strip()  # URLs propias, separadas por |, opcionales
 MUSICA_VOLUMEN = 0.065  # más presencia, con limitador final para evitar clipping
 LIKE_PAGE_URL = 'https://commons.wikimedia.org/wiki/File:Facebook_Like_button.svg'
 LIKE_SVG_URL = 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Facebook_Like_button.svg'
@@ -72,22 +80,305 @@ ENFOQUE_CATEGORIA = {
     'AVIACIÓN DEL FUTURO': ('Las tecnologías nuevas deben demostrar viabilidad técnica y cumplimiento de seguridad.', '¿Qué limitaciones prácticas impiden pasar del prototipo al servicio?'),
 }
 
-def plan_guion_episodio(caso,episodio):
-    """Guion educativo sobre el tema concreto, no una historia de misterio reciclada."""
-    t=caso['_titulo_caso']; idea=caso['contexto']; cat=caso['categoria']
-    observacion,pregunta=ENFOQUE_CATEGORIA[cat]
-    # Una frase específica por tema es el núcleo de la explicación.
-    return [
-        ('gancho',f'¿Qué debería saber un aviador sobre {t.lower()}? Hay una explicación técnica detrás de este concepto, y entenderla importa.'),
-        ('pregunta',caso['pregunta']),
-        ('contexto',f'Empecemos por la idea central. {idea}'),
-        ('pista',f'Para interpretarlo correctamente, hay que situarlo en su ámbito: {cat.lower()}. {observacion}'),
-        ('analisis',f'Esta es una pregunta útil para estudiar el tema: {pregunta} La respuesta específica cambia según el equipo, el tipo de operación y la documentación correspondiente.'),
-        ('evidencia',f'El dato clave que debemos conservar es el siguiente. {idea} Este principio no reemplaza los valores, tablas o limitaciones de un modelo concreto.'),
-        ('aplicacion',f'¿Para qué sirve aprenderlo? {caso["importancia"]} Conviene contrastarlo con un manual vigente o una publicación técnica de la autoridad competente.'),
-        ('conclusion',f'En resumen, {idea} Consulta las referencias oficiales indicadas en la descripción y comprueba sus ediciones vigentes. AEROFACTUM: el conocimiento detrás de cada vuelo.'),
-        ('cta','Si aprendiste algo útil, dale Like y comparte. Suscríbete a AEROFACTUM para seguir explorando la industria aeronáutica.'),
-    ]
+# =================== INVESTIGACIÓN Y GUION IA ===================
+# Un motor IA jamás se considera fuente: las afirmaciones deben vincularse a textos
+# realmente recuperados. Una coincidencia textual no certifica veracidad científica.
+
+def _limpiar_texto_web(contenido, tipo='text/html'):
+    """Extrae texto legible, sin ejecutar scripts ni instalar navegadores."""
+    if 'pdf' in tipo.lower():
+        return ''  # no interpretar binarios como texto contrastado
+    try:
+        from bs4 import BeautifulSoup
+        sopa=BeautifulSoup(contenido,'html.parser')
+        for nodo in sopa(['script','style','nav','footer','header','form','noscript','svg']):
+            nodo.decompose()
+        principal=sopa.find('article') or sopa.find('main') or sopa.body or sopa
+        texto=principal.get_text(' ',strip=True)
+    except Exception:
+        texto=re.sub(r'<[^>]+>',' ',contenido)
+    return re.sub(r'\s+',' ',html.unescape(texto)).strip()[:18000]
+
+
+def _tokens_tema(caso):
+    import unicodedata
+    palabras=(caso.get('titulo','')+' '+caso.get('contexto','')+' '
+              +' '.join(caso.get('imagenes',[])[:3])).lower()
+    palabras=''.join(c for c in unicodedata.normalize('NFKD',palabras) if not unicodedata.combining(c))
+    stop={'que','como','para','por','una','del','los','las','the','and','with','this','from',
+          'aircraft','aviation','avion','aviones','aeronave','aeronaves','airplane',
+          'importa','explicado','funciona','airport','airliner','photo','fotografia'}
+    return {p for p in re.findall(r'[a-z]{4,}',palabras) if p not in stop}
+
+
+def _relevancia_documento(texto, caso):
+    import unicodedata
+    t=''.join(c for c in unicodedata.normalize('NFKD',texto.lower()) if not unicodedata.combining(c))
+    tokens=_tokens_tema(caso)
+    return len([x for x in tokens if re.search(r'\b'+re.escape(x)+r'\b',t)])
+
+
+def _leer_documento_web(session,url,caso,origen):
+    from urllib.parse import urlparse
+    if not url.startswith('https://'):return None
+    host=urlparse(url).hostname or ''
+    # Nunca acceder a IPs internas ni localhost: evita URLs arbitrarias inseguras.
+    if host in {'localhost','127.0.0.1','0.0.0.0'} or host.endswith('.local'):
+        return None
+    try:
+        respuesta=session.get(url,timeout=(8,17),allow_redirects=True,headers={
+            'User-Agent':'AEROFACTUM/4.0 (+https://acesped.github.io/aerofactum/; contacto: ari.cesped@gmail.com)'})
+        respuesta.raise_for_status()
+        if len(respuesta.content)>1_800_000:return None
+        mime=respuesta.headers.get('Content-Type','text/html').lower()
+        if not ('html' in mime or 'text/plain' in mime):return None
+        texto=_limpiar_texto_web(respuesta.text,mime)
+        if len(texto)<550 or _relevancia_documento(texto,caso)<1:return None
+        dominio=urlparse(respuesta.url).hostname or ''
+        # Si no hay artículo externo accesible, no se cita la portada de Google News.
+        if dominio.endswith('news.google.com'):return None
+        return {'id':'', 'nombre':origen[:120], 'url':respuesta.url,
+                'fecha_consulta':datetime.now(timezone.utc).isoformat(),
+                'texto':texto[:11500], 'coincidencias_tema':_relevancia_documento(texto,caso)}
+    except Exception as e:
+        print('  Fuente no recuperable:',url[:110],str(e)[:100],flush=True)
+        return None
+
+
+def investigar_episodio(caso, carpeta, session):
+    """Fuentes reales: páginas oficiales + artículos relacionados desde RSS.
+
+    El RSS sirve para *descubrir* enlaces: el contenido debe descargarse de la
+    fuente final para poder sustentar una afirmación. Sin datos, no publica.
+    """
+    from urllib.parse import quote, urlparse
+    import xml.etree.ElementTree as ET
+    consultas=[]
+    for valor in AERO_IA_URLS.split('|'):
+        if valor.strip():consultas.append((valor.strip(),'Fuente adicional'))
+    for item in caso.get('fuentes',[]):
+        if isinstance(item,(list,tuple)) and len(item)>=2:
+            consultas.append((item[1],item[0]))
+    # Noticias pertinentes como material adicional. GDELT entrega enlaces
+    # DIRECTOS a las fuentes; no usamos titulares agregados como prueba.
+    consulta=' '.join(caso.get('imagenes',[])[:1]).strip() or caso['titulo']
+    try:
+        gdelt=session.get('https://api.gdeltproject.org/api/v2/doc/doc',
+            params={'query':consulta+' aviation','mode':'artlist','format':'json',
+                    'maxrecords':8,'timespan':'3months'},timeout=(7,16),
+            headers={'User-Agent':'AEROFACTUM/4.0 (+https://acesped.github.io/aerofactum/)'})
+        if gdelt.ok:
+            for articulo in gdelt.json().get('articles',[])[:8]:
+                link=articulo.get('url','')
+                if link.startswith('https://'):
+                    consultas.append((link,articulo.get('title','Noticias aeronáuticas')))
+        else:
+            print('  Descubrimiento GDELT:',gdelt.status_code,flush=True)
+    except Exception as e:
+        print('  GDELT no disponible:',str(e)[:130],flush=True)
+    consultas_rss=[consulta+' aviation', caso['titulo']+' aeronáutica']
+    for q in consultas_rss:
+        try:
+            url='https://news.google.com/rss/search?q='+quote(q)+'&hl=es-419&gl=US&ceid=US:es'
+            r=session.get(url,timeout=(7,14),headers={'User-Agent':'AEROFACTUM/4.0 (+https://acesped.github.io/aerofactum/)'})
+            r.raise_for_status()
+            raiz=ET.fromstring(r.content)
+            for elemento in raiz.findall('./channel/item')[:5]:
+                titulo=(elemento.findtext('title') or 'Artículo de actualidad')[:120]
+                link=(elemento.findtext('link') or '').strip()
+                if link:consultas.append((link,titulo))
+        except Exception as e:
+            print('  RSS no disponible:',str(e)[:140],flush=True)
+    documentos=[];vistos=set()
+    for url,nombre in consultas[:15]:
+        if url in vistos:continue
+        vistos.add(url)
+        doc=_leer_documento_web(session,url,caso,nombre)
+        if doc and doc['url'] not in {d['url'] for d in documentos}:
+            doc['id']='F'+str(len(documentos)+1)
+            documentos.append(doc)
+            print('  Documento leído:',doc['id'],doc['nombre'][:65],
+                  f"({len(doc['texto'])} caracteres)",flush=True)
+        if len(documentos)>=5:break
+    informe={'tema':caso['titulo'], 'consultados':len(vistos),
+             'fuentes':[{'id':d['id'],'nombre':d['nombre'],'url':d['url'],
+                         'coincidencias_tema':d['coincidencias_tema'],
+                         'extracto':d['texto'][:900]} for d in documentos]}
+    (carpeta/'FUENTES_INVESTIGACION.json').write_text(
+        json.dumps(informe,ensure_ascii=False,indent=2),encoding='utf-8')
+    if len(documentos)<AERO_IA_MIN_FUENTES:
+        raise RuntimeError(f'Investigación insuficiente: {len(documentos)} fuentes legibles; '
+                           f'mínimo {AERO_IA_MIN_FUENTES}. No se usará el guion genérico ni se publicará.')
+    return documentos
+
+
+def _limpiar_json_ia(texto):
+    texto=(texto or '').strip()
+    if texto.startswith('```'):
+        texto=re.sub(r'^```(?:json)?\s*','',texto,flags=re.I)
+        texto=re.sub(r'\s*```$','',texto)
+    try:return json.loads(texto)
+    except json.JSONDecodeError:
+        ini=texto.find('{'); fin=texto.rfind('}')
+        if ini<0 or fin<=ini:raise
+        return json.loads(texto[ini:fin+1])
+
+
+def _consultar_gemini(prompt):
+    import requests
+    from urllib.parse import quote
+    key=os.getenv('GEMINI_API_KEY','').strip()
+    if not key:raise RuntimeError('GEMINI_API_KEY no configurada')
+    endpoint='https://generativelanguage.googleapis.com/v1beta/models/'+quote(GEMINI_MODELO,safe='')+':generateContent'
+    payload={'contents':[{'role':'user','parts':[{'text':prompt}]}],
+             'generationConfig':{'temperature':0.55,'maxOutputTokens':8192,
+                                 'responseMimeType':'application/json'}}
+    res=requests.post(endpoint,headers={'x-goog-api-key':key,'Content-Type':'application/json'},
+                      json=payload,timeout=(10,115))
+    if not res.ok:raise RuntimeError(f'Gemini HTTP {res.status_code}: '+res.text[:350])
+    data=res.json()
+    candidatos=data.get('candidates') or []
+    if not candidatos:raise RuntimeError('Gemini no devolvió candidatos.')
+    partes=candidatos[0].get('content',{}).get('parts',[])
+    texto=''.join(p.get('text','') for p in partes)
+    return _limpiar_json_ia(texto)
+
+
+def _consultar_groq(prompt):
+    import requests
+    key=os.getenv('GROQ_API_KEY','').strip()
+    if not key:raise RuntimeError('GROQ_API_KEY no configurada')
+    payload={'model':GROQ_MODELO,'messages':[
+        {'role':'system','content':'Eres un redactor técnico aeronáutico. Responde solo JSON válido.'},
+        {'role':'user','content':prompt}],
+        'temperature':0.55,'max_completion_tokens':7000,
+        'response_format':{'type':'json_object'}}
+    res=requests.post('https://api.groq.com/openai/v1/chat/completions',
+            headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},
+            json=payload,timeout=(10,115))
+    if not res.ok:raise RuntimeError(f'Groq HTTP {res.status_code}: '+res.text[:350])
+    respuesta=res.json()['choices'][0]['message']['content']
+    return _limpiar_json_ia(respuesta)
+
+
+def _normalizar_evidencia(texto):
+    import unicodedata
+    texto=unicodedata.normalize('NFKC',str(texto))
+    return re.sub(r'\s+',' ',texto).strip().casefold()
+
+
+def _validar_guion_ia(datos,documentos,caso):
+    """Validación estructural, antigenericidad y citas textuales.
+
+    Una cita localizada no prueba que cada afirmación narrada esté verificada.
+    """
+    if not isinstance(datos,dict):raise ValueError('Respuesta IA no es JSON objeto.')
+    hechos=datos.get('hechos_con_evidencia',[])
+    if not isinstance(hechos,list) or len(hechos)<AERO_IA_MIN_DATOS:
+        raise ValueError(f'Se requieren {AERO_IA_MIN_DATOS} hechos con evidencia textual.')
+    fuentes={d['id']:d for d in documentos}
+    referencias=set()
+    for hecho in hechos:
+        if not isinstance(hecho,dict):raise ValueError('Hecho mal estructurado')
+        sid=hecho.get('fuente_id');cita=str(hecho.get('cita_textual','')).strip()
+        afirmacion=str(hecho.get('afirmacion','')).strip()
+        if sid not in fuentes or len(cita)<28 or len(afirmacion)<25:
+            raise ValueError('Hecho sin fuente válida, cita o afirmación detallada.')
+        if _normalizar_evidencia(cita) not in _normalizar_evidencia(fuentes[sid]['texto']):
+            raise ValueError(f'Cita del hecho no localizada literalmente en fuente {sid}.')
+        referencias.add(sid)
+    bloques=datos.get('bloques')
+    tipos=['gancho','pregunta','contexto','pista','analisis','evidencia','aplicacion','conclusion']
+    if not isinstance(bloques,list) or [b.get('tipo') for b in bloques if isinstance(b,dict)]!=tipos:
+        raise ValueError('El guion IA requiere ocho bloques en orden: '+', '.join(tipos))
+    frases=[]; total=0
+    prohibidas=['este contenido es educativo','no sustituye manuales aprobados',
+                'la aviacion es fascinante','el conocimiento detras de cada vuelo',
+                'es muy importante','en resumen, es importante']
+    for b in bloques:
+        txt=re.sub(r'\s+',' ',str(b.get('texto',''))).strip()
+        palabras=txt.split();total+=len(palabras)
+        if len(palabras)<14 or len(palabras)>105:
+            raise ValueError('Bloque '+b['tipo']+' demasiado corto/largo ('+str(len(palabras))+' palabras).')
+        norm=_normalizar_evidencia(txt)
+        if any(x in norm for x in prohibidas):raise ValueError('Guion con frase genérica o advertencia eliminada.')
+        frases.append(norm)
+    if not 235<=total<=490:
+        raise ValueError(f'Guion de {total} palabras fuera de objetivo (235 a 490).')
+    from difflib import SequenceMatcher
+    for a in range(len(frases)):
+        for b in range(a+1,len(frases)):
+            if SequenceMatcher(None,frases[a],frases[b]).ratio()>.78:
+                raise ValueError('Redundancia excesiva entre escenas '+str(a+1)+' y '+str(b+1))
+    return [(b['tipo'],re.sub(r'\s+',' ',b['texto']).strip()) for b in bloques]
+
+
+def generar_guion_investigado(caso,episodio,documentos,carpeta):
+    """Sin fallback a plantillas: Gemini -> Groq; si ambos fallan, detener."""
+    if AERO_IA_MODO not in ('auto','gemini','groq'):
+        raise ValueError('AERO_IA_MODO debe ser auto, gemini o groq')
+    fuentes_prompt=[]
+    for doc in documentos:
+        fuentes_prompt.append({'id':doc['id'],'titulo':doc['nombre'],
+              'url':doc['url'],'texto_fuente':doc['texto'][:10000]})
+    historial_textos=[]
+    try:
+        for item in leer_historial(ruta_historial())[-8:]:
+            if item.get('titulo'):historial_textos.append(item['titulo'])
+    except Exception:pass
+    instruccion={
+       'tarea':'Redacta un guion ORIGINAL de divulgación aeronáutica en ESPAÑOL, nada de plantillas.',
+       'tema':caso['titulo'], 'categoria':caso['categoria'],
+       'idea_de_partida_no_verificada':caso['contexto'],
+       'titulos_previos_para_no_repetir':historial_textos,
+       'fuentes_documentales':fuentes_prompt,
+       'normas':[ 'Devuelve un objeto JSON, sin markdown ni texto externo.',
+         'Usa EXCLUSIVAMENTE hechos sustentables en las fuentes incluidas; no inventes cifras, fechas, citas o normativa.',
+         'Si las fuentes hablan de algo tangencial, delimita con honestidad el alcance; no extrapoles.',
+         'Incluye entre 3 y 6 hechos_con_evidencia: {fuente_id, afirmacion, cita_textual}; cita_textual debe copiar literalmente 28 a 240 caracteres consecutivos de texto_fuente.',
+         'Escribe ocho bloques en orden EXACTO: gancho,pregunta,contexto,pista,analisis,evidencia,aplicacion,conclusion.',
+         'Cada bloque: {tipo,texto}; intenta 35 a 55 palabras, máximo 105. Total de ocho bloques entre 235 y 490 palabras.',
+         'Debes aportar al menos tres aprendizajes específicos y un ejemplo explicado sin inventar incidentes.',
+         'La primera escena plantea un dilema, cifra sustentada o situación concreta, diferente a otras aperturas.',
+         'No redundancias, frases vacías, repeticiones de conceptos ni palabras de relleno.',
+         'No incluyas llamadas a like ni suscripción: se añaden después en una escena independiente.',
+         'No incluyas advertencias tipo "este contenido es educativo".',
+         'Evita escribir "un estudio indica" si no hay informe explícito en las fuentes.',
+         'El resultado no debe depender de referencias numéricas que no figuren en el texto recuperado.' ],
+       'estructura':{'hechos_con_evidencia':[{'fuente_id':'F1','afirmacion':'hecho','cita_textual':'copia exacta de texto_fuente'}],
+                     'bloques':[{'tipo':'gancho','texto':'Narración...'}]}}
+    prompt='Escribe JSON válido en español siguiendo esta especificación:\n'+json.dumps(instruccion,ensure_ascii=False)
+    motores=['gemini','groq'] if AERO_IA_MODO=='auto' else [AERO_IA_MODO]
+    errores=[]
+    for motor in motores:
+        prompt_motor=prompt
+        for intento in range(1,3):
+            try:
+                print(f'  Redactando con IA: {motor} intento {intento}/2',flush=True)
+                datos=_consultar_gemini(prompt_motor) if motor=='gemini' else _consultar_groq(prompt_motor)
+                plan=_validar_guion_ia(datos,documentos,caso)
+                # El CTA permanece como escena final sin subtítulos.
+                plan.append(('cta','Dale Like y Suscríbete a AEROFACTUM para conocer más sobre aviación.'))
+                (carpeta/'GUION_IA.json').write_text(json.dumps({
+                    'motor':motor, 'modelo':GEMINI_MODELO if motor=='gemini' else GROQ_MODELO,
+                    'fecha_utc':datetime.now(timezone.utc).isoformat(),
+                    'fuentes':[{'id':d['id'],'nombre':d['nombre'],'url':d['url']} for d in documentos],
+                    'resultado':datos,'verificacion':'Citas textuales localizadas; precisión técnica no certificada automáticamente'
+                },ensure_ascii=False,indent=2),encoding='utf-8')
+                print(f'  Guion IA validado: {len(plan)-1} escenas + CTA, motor {motor}',flush=True)
+                return plan
+            except Exception as e:
+                mensaje=str(e)[:550]
+                errores.append(motor+f' intento {intento}: '+mensaje)
+                print('  Motor IA no disponible/guion rechazado:',motor,mensaje[:240],flush=True)
+                # No insistir ante cuotas, autenticación, modelos retirados o errores de red.
+                if any(t in mensaje.lower() for t in ('http 429','http 401','http 403','http 404',
+                         'http 503','http 500','no configurada','timeout','connection')):
+                    break
+                prompt_motor=prompt+'\nIMPORTANTE: La respuesta previa se rechazó por: '+mensaje+                              '. Corrige la estructura y las citas textuales literales.\n'
+    (carpeta/'ERROR_GUION_IA.txt').write_text('\n'.join(errores),encoding='utf-8')
+    raise RuntimeError('No se obtuvo un guion investigado válido. '
+                       'NO se publicará usando una plantilla. '+' | '.join(errores))
 
 # ==================== SELECCIÓN Y HISTORIAL ====================
 def ruta_historial():
@@ -1482,7 +1773,16 @@ def producir_episodio(episodio,historial):
     print('\nAEROFACTUM · EPISODIO',episodio['id'],'\n',caso['titulo'])
     print('Estado de documentación:',caso['estado'])
     sesion=requests.Session()
-    fuentes=verificar_fuentes(caso,sesion,carpeta)
+    verificar_fuentes(caso,sesion,carpeta)  # disponibilidad general, NO fact-check
+    print('Investigando documentos y noticias accesibles...')
+    documentos=investigar_episodio(caso,carpeta,sesion)
+    plan=generar_guion_investigado(caso,episodio,documentos,carpeta)
+    fuentes=[{'nombre':d['nombre'],'url':d['url'],'status':'documento_leido',
+              'id':d['id']} for d in documentos]
+    if AERO_IA_DRY_RUN:
+        (carpeta/'GUION_PREVIO.txt').write_text('\n\n'.join(f'{tipo.upper()}: {txt}' for tipo,txt in plan),encoding='utf-8')
+        print('PRUEBA GUION COMPLETADA, sin fotos, TTS ni publicación:',carpeta,flush=True)
+        return carpeta/'GUION_PREVIO.txt'
     print('Buscando fotos con atribución y licencias abiertas...')
     fotos,creditos=buscar_fotos(caso,sesion,carpeta)
     (carpeta/'RESUMEN_RECURSOS_VISUALES.txt').write_text(
@@ -1509,8 +1809,7 @@ def producir_episodio(episodio,historial):
         print('Vista previa:',thumb)
         guardar_drive(carpeta)
         return thumb
-    plan=plan_guion_episodio(caso,episodio)
-    print('Produciendo narración...')
+    print('Produciendo narración investigada...')
     bloques,cues,voz=generar_voces(plan,carpeta)
     print('Duración narrada:',round(tiempo_medio_audio(voz)/60,2),'minutos')
     inicio_cta=next((b['inicio'] for b in bloques if b['tipo']=='cta'),None)
@@ -1530,11 +1829,12 @@ def producir_episodio(episodio,historial):
     return video
 
 def ejecutar():
-    asegurar_dependencias()
+    if not AERO_IA_DRY_RUN:
+        asegurar_dependencias()
     historial=ruta_historial()
     cantidad=int(VIDEOS_POR_EJECUCION)
     if cantidad<1 or cantidad>len(CATALOGO_AERONAUTICO):raise ValueError('VIDEOS_POR_EJECUCION debe estar entre 1 y '+str(len(CATALOGO_AERONAUTICO))+'.')
-    if PUBLICAR_EN_YOUTUBE:
+    if PUBLICAR_EN_YOUTUBE and not AERO_IA_DRY_RUN:
         if YOUTUBE_PRIVACY!='private' and not PERMITIR_PUBLICACION_SIN_REVISION:
             raise RuntimeError('Publicación pública requiere ALLOW_UNREVIEWED_PUBLICATION=true tras revisión editorial.')
         validar_canal_youtube(youtube_servicio())
@@ -1554,5 +1854,10 @@ if __name__=='__main__':
         iniciar_oauth_local()
     elif '--check-auth' in sys.argv:
         validar_canal_youtube(youtube_servicio())
+    elif '--check-ia' in sys.argv:
+        if not (os.getenv('GEMINI_API_KEY') or os.getenv('GROQ_API_KEY')):
+            raise RuntimeError('Falta GEMINI_API_KEY o GROQ_API_KEY en GitHub Secrets.')
+        print('Motores configurados:', ', '.join(k for k,e in [
+            ('Gemini',os.getenv('GEMINI_API_KEY')),('Groq',os.getenv('GROQ_API_KEY'))] if e))
     else:
         ejecutar()
