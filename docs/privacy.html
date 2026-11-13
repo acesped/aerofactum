@@ -1,43 +1,421 @@
-# Política de privacidad de SISMONAUTA
 
-**Última actualización:** 28 de octubre de 2026
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Política de privacidad de AEROFACTUM y uso de YouTube Data API v3.">
+  <title>Política de privacidad | AEROFACTUM</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      background: #091421;
+      color: #d9e5f0;
+      margin: 0;
+      line-height: 1.75;
+    }
+    header {
+      background: #102b45;
+      padding: 35px 20px;
+      border-bottom: 1px solid #335b78;
+    }
+    main {
+      max-width: 900px;
+      margin: auto;
+      padding: 35px 22px 65px;
+    }
+    h1 { color: #ffffff; }
+    h2 {
+      color: #85d6ff;
+      margin-top: 35px;
+    }
+    a { color: #86d9ff; }
+    li { margin-bottom: 8px; }
+    .note {
+      background: #142a3d;
+      border-left: 4px solid #65c9ff;
+      padding: 18px 22px;
+      border-radius: 6px;
+    }
+    footer {
+      border-top: 1px solid #335b78;
+      text-align: center;
+      padding: 25px;
+      background: #06101a;
+    }
+    footer a { margin: 0 8px; }
+  </style>
+</head>
 
-## 1. Responsable
+<body>
 
-SISMONAUTA es responsable del tratamiento de los datos que reciba directamente a través de su aplicación.
+<header>
+  <h1>Política de privacidad de AEROFACTUM</h1>
+  <p>Última actualización: 12 de noviembre de 2026</p>
+</header>
 
-**Contacto:** ari.cesped@gmail.com
+<main>
 
-## 2. Finalidades del tratamiento
+  <section>
+    <h2>1. Identificación de la aplicación</h2>
+    <p>
+      AEROFACTUM es una aplicación de automatización
+      de contenido educativo aeronáutico.
+    </p>
+    <p>
+      Su función es generar y publicar videos sobre
+      conocimientos técnicos, operacionales, financieros
+      y científicos de la industria aeronáutica.
+    </p>
+    <p>
+      La aplicación integra YouTube Data API v3
+      mediante OAuth 2.0 para publicar contenido
+      en canales expresamente autorizados.
+    </p>
+    <p>
+      Canal principal:
+      <a href="https://www.youtube.com/@aerofactum">
+        @aerofactum
+      </a>.
+    </p>
+    <p>
+      Contacto de privacidad:
+      <a href="mailto:ari.cesped@gmail.com">
+        ari.cesped@gmail.com
+      </a>.
+    </p>
+  </section>
 
-La integración con TikTok está destinada a permitir la autorización de cuentas y la publicación de videos científicos mediante las interfaces oficiales de TikTok.
+  <section>
+    <h2>2. Datos a los que accedemos</h2>
+    <p>
+      AEROFACTUM utiliza los permisos concedidos
+      explícitamente por el administrador del canal
+      mediante el sistema OAuth de Google.
+    </p>
+    <p>
+      Dependiendo del permiso autorizado y de las
+      operaciones realizadas, la aplicación puede acceder a:
+    </p>
+    <ul>
+      <li>
+        Identificador, nombre e información básica
+        del canal de YouTube autorizado.
+      </li>
+      <li>
+        Identificadores y metadatos de videos
+        publicados mediante la aplicación.
+      </li>
+      <li>
+        Información necesaria para comprobar
+        que el canal autorizado es el correcto.
+      </li>
+      <li>
+        Tokens de autorización OAuth necesarios
+        para realizar las operaciones permitidas.
+      </li>
+      <li>
+        Respuestas técnicas de YouTube Data API
+        relacionadas con las publicaciones.
+      </li>
+    </ul>
+    <p>
+      AEROFACTUM no necesita conocer ni almacenar
+      la contraseña de la cuenta de Google.
+      La autenticación se realiza mediante OAuth 2.0.
+    </p>
+  </section>
 
-## 3. Información que podría procesarse
+  <section>
+    <h2>3. Permisos y finalidad del acceso</h2>
+    <p>
+      La aplicación utiliza YouTube API Services.
+      Su integración actual solicita el permiso
+      <code>
+        https://www.googleapis.com/auth/youtube.force-ssl
+      </code>.
+    </p>
+    <p>
+      El acceso autorizado se utiliza para:
+    </p>
+    <ul>
+      <li>
+        Identificar y verificar el canal de destino.
+      </li>
+      <li>
+        Subir videos educativos aeronáuticos.
+      </li>
+      <li>
+        Establecer títulos, descripciones, etiquetas
+        y opciones de visibilidad.
+      </li>
+      <li>
+        Configurar miniaturas personalizadas.
+      </li>
+      <li>
+        Incorporar pistas de subtítulos.
+      </li>
+      <li>
+        Registrar identificadores de publicación
+        y evitar cargas duplicadas.
+      </li>
+    </ul>
+    <p>
+      El permiso solicitado por Google puede autorizar
+      operaciones más amplias que las funciones
+      actualmente utilizadas por AEROFACTUM.
+      La aplicación solo debe realizar operaciones
+      previstas en su código y autorizadas
+      por el administrador del canal.
+    </p>
+  </section>
 
-Cuando un usuario autoriza la conexión con TikTok, SISMONAUTA puede procesar los identificadores de cuenta, nombres de usuario, permisos concedidos, tokens de acceso y renovación, así como identificadores y estados técnicos de las publicaciones.
+  <section>
+    <h2>4. Uso de la información</h2>
+    <p>
+      La información obtenida mediante Google y YouTube
+      se utiliza exclusivamente para operar,
+      autenticar y supervisar las funciones
+      de publicación autorizadas de AEROFACTUM.
+    </p>
+    <p>
+      La aplicación no utiliza los datos del canal
+      para publicidad personalizada, elaboración
+      de perfiles comerciales ni venta de información.
+    </p>
+    <p>
+      Los datos de autorización no se utilizan
+      para generar visualizaciones, suscripciones,
+      comentarios o interacciones artificiales.
+    </p>
+  </section>
 
-La información efectivamente recopilada dependerá de los permisos autorizados y de las funcionalidades habilitadas.
+  <section>
+    <h2>5. Almacenamiento y seguridad</h2>
+    <p>
+      La automatización se ejecuta mediante GitHub Actions.
+      Las credenciales OAuth se configuran como
+      secretos del repositorio y son utilizadas
+      durante los procesos autorizados.
+    </p>
+    <p>
+      No deben incorporarse Client Secrets,
+      Refresh Tokens ni contraseñas directamente
+      al código fuente público.
+    </p>
+    <p>
+      AEROFACTUM puede guardar registros técnicos
+      de producción y publicación, como identificadores
+      de episodios, estados de procesamiento
+      e identificadores de videos de YouTube.
+    </p>
+    <p>
+      El historial de publicación se conserva
+      en el repositorio configurado para el proyecto.
+      Si el repositorio es público, los registros
+      publicados allí pueden ser visibles
+      para cualquier visitante.
+    </p>
+    <p>
+      Los archivos audiovisuales temporales y los
+      registros de ejecución pueden almacenarse
+      durante el procesamiento en la infraestructura
+      utilizada por GitHub Actions, de acuerdo
+      con la configuración y las políticas
+      de retención de GitHub.
+    </p>
+    <p>
+      Se aplican las medidas de seguridad disponibles
+      en los servicios utilizados, sin garantizar
+      que ningún sistema informático esté exento
+      de riesgos.
+    </p>
+  </section>
 
-## 4. Uso y protección
+  <section>
+    <h2>6. Servicios externos y transferencia de datos</h2>
+    <p>
+      AEROFACTUM utiliza servicios de terceros
+      necesarios para sus funciones:
+    </p>
+    <ul>
+      <li>
+        Google y YouTube: autorización OAuth,
+        acceso a YouTube Data API y alojamiento
+        de los videos publicados.
+      </li>
+      <li>
+        GitHub: almacenamiento del proyecto,
+        ejecución de automatizaciones,
+        secretos y registros de trabajo.
+      </li>
+      <li>
+        Wikimedia Commons: consulta y descarga
+        de recursos visuales con licencias abiertas.
+      </li>
+      <li>
+        Servicios de síntesis de voz utilizados
+        por el generador: conversión de texto
+        narrativo a audio.
+      </li>
+    </ul>
+    <p>
+      La información técnica transmitida a cada
+      servicio se limita a la necesaria para realizar
+      la función correspondiente.
+    </p>
+    <p>
+      Los videos, metadatos y subtítulos enviados
+      a YouTube quedan sujetos también
+      a las políticas de Google y YouTube.
+    </p>
+    <p>
+      AEROFACTUM no vende a terceros los datos
+      obtenidos mediante la autorización OAuth.
+    </p>
+  </section>
 
-La información de autenticación se utilizará para las funcionalidades autorizadas. Los tokens deberán conservarse mediante mecanismos de almacenamiento protegido y no se publicarán en repositorios públicos.
+  <section>
+    <h2>7. Conservación y eliminación de datos</h2>
+    <p>
+      Los tokens OAuth se utilizan mientras
+      exista una autorización válida y sean
+      necesarios para las funciones del proyecto.
+    </p>
+    <p>
+      Los registros de publicación pueden
+      conservarse para impedir duplicaciones,
+      verificar resultados y diagnosticar errores,
+      hasta que sean eliminados por el administrador.
+    </p>
+    <p>
+      El administrador puede solicitar la eliminación
+      de registros locales del proyecto y la
+      revocación de las credenciales de acceso.
+    </p>
+    <p>
+      Los contenidos publicados en YouTube
+      permanecen sujetos a las opciones de gestión
+      y eliminación disponibles en YouTube Studio.
+      Revocar OAuth no elimina automáticamente
+      los videos ya publicados.
+    </p>
+    <p>
+      Para solicitar información o eliminación
+      de los datos almacenados por el proyecto:
+      <a href="mailto:ari.cesped@gmail.com">
+        ari.cesped@gmail.com
+      </a>.
+    </p>
+  </section>
 
-SISMONAUTA no comercializará los datos personales obtenidos mediante la integración.
+  <section class="note">
+    <h2>8. Revocación del acceso a Google</h2>
+    <p>
+      El titular de la cuenta puede retirar
+      su autorización de AEROFACTUM
+      en cualquier momento desde:
+    </p>
+    <p>
+      <a href="https://myaccount.google.com/connections">
+        Gestionar conexiones y acceso de terceros
+        en la cuenta de Google
+      </a>
+    </p>
+    <p>
+      Después de revocar el acceso, la aplicación
+      ya no podrá realizar operaciones autorizadas
+      con ese token y podría ser necesario
+      eliminar también los secretos
+      almacenados en GitHub.
+    </p>
+  </section>
 
-## 5. Servicios externos
+  <section>
+    <h2>9. Cookies y analítica de este sitio</h2>
+    <p>
+      Estas páginas informativas son documentos
+      HTML estáticos. No incluyen un sistema propio
+      de cuentas, formularios de recopilación
+      de datos personales ni herramientas propias
+      de seguimiento publicitario.
+    </p>
+    <p>
+      Los proveedores de alojamiento y los enlaces
+      a servicios externos pueden procesar
+      información técnica de conexión
+      conforme a sus propias políticas.
+    </p>
+  </section>
 
-Para su operación, SISMONAUTA puede utilizar servicios como TikTok, GitHub, Meta y proveedores de datos sísmicos. Estos servicios mantienen sus propias políticas de privacidad.
+  <section>
+    <h2>10. Privacidad de Google y YouTube</h2>
+    <p>
+      Para conocer cómo Google procesa
+      la información relacionada con sus servicios,
+      consulta:
+    </p>
+    <ul>
+      <li>
+        <a href="https://policies.google.com/privacy">
+          Política de privacidad de Google
+        </a>
+      </li>
+      <li>
+        <a href="https://www.youtube.com/t/terms">
+          Términos de servicio de YouTube
+        </a>
+      </li>
+      <li>
+        <a href="https://developers.google.com/youtube/terms/developer-policies">
+          Políticas de YouTube API Services
+        </a>
+      </li>
+    </ul>
+  </section>
 
-## 6. Conservación y eliminación
+  <section>
+    <h2>11. Cambios en esta política</h2>
+    <p>
+      Esta política puede actualizarse cuando
+      cambien las funciones, los servicios
+      integrados o el tratamiento de datos.
+    </p>
+    <p>
+      Cualquier cambio sustancial en el uso
+      de datos autorizados requerirá las
+      notificaciones o nuevos consentimientos
+      que resulten aplicables.
+    </p>
+  </section>
 
-Los datos de autenticación y registros técnicos se conservarán únicamente durante el período necesario para operar la integración o cumplir obligaciones aplicables.
+  <section>
+    <h2>12. Contacto</h2>
+    <p>
+      Responsable del proyecto: AEROFACTUM.
+    </p>
+    <p>
+      Correo:
+      <a href="mailto:ari.cesped@gmail.com">
+        ari.cesped@gmail.com
+      </a>.
+    </p>
+  </section>
 
-Los usuarios podrán solicitar información sobre sus datos, la revocación de autorizaciones o la eliminación de información asociada a su cuenta mediante el correo de contacto indicado.
+</main>
 
-## 7. Derechos de los usuarios
+<footer>
+  <p>© 2026 AEROFACTUM</p>
+  <p>
+    <a href="./">Inicio</a>
+    <a href="privacy.html">Privacidad</a>
+    <a href="terms.html">Términos</a>
+  </p>
+</footer>
 
-Los usuarios pueden solicitar acceso, rectificación o eliminación de los datos personales que SISMONAUTA conserve, conforme a la normativa aplicable.
-
-## 8. Cambios en esta política
-
-Las modificaciones se comunicarán mediante la publicación de una nueva versión de esta política.
+</body>
+</html>
