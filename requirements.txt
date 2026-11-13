@@ -1,9 +1,9 @@
-
 Pillow>=10.0,<13
 requests>=2.31,<3
 edge-tts>=6.1,<9
 numpy>=1.24,<3
 CairoSVG>=2.7,<3
+beautifulsoup4>=4.12,<5
 google-api-python-client>=2.100,<3
 google-auth>=2.25,<3
 google-auth-oauthlib>=1.1,<2
