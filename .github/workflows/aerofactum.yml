@@ -48,6 +48,9 @@ jobs:
       AERO_BUSQUEDA_MAX_URLS: ${{ vars.AERO_BUSQUEDA_MAX_URLS || '12' }}
       GEMINI_MODELO: ${{ vars.GEMINI_MODELO || 'gemini-3.8-flash' }}
       GROQ_MODELO: ${{ vars.GROQ_MODELO || 'openai/gpt-oss-120b' }}
+      OPENROUTER_MODELO: ${{ vars.OPENROUTER_MODELO || 'openrouter/free' }}
+      # Búsqueda integrada de OpenRouter puede generar cargos, incluso con modelo gratuito.
+      AERO_OPENROUTER_WEB_SEARCH: ${{ vars.AERO_OPENROUTER_WEB_SEARCH || 'false' }}
       AERO_IA_MIN_FUENTES: ${{ vars.AERO_IA_MIN_FUENTES || '1' }}
       AERO_IA_MIN_DATOS: '3'
       # Voz pausada y subtítulos anticipados respecto del audio.
@@ -58,6 +61,7 @@ jobs:
       ALLOW_UNREVIEWED_PUBLICATION: ${{ vars.ALLOW_UNREVIEWED_PUBLICATION || 'false' }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
       YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
@@ -76,8 +80,8 @@ jobs:
           test -s requirements.txt || { echo '::error::Falta requirements.txt'; exit 1; }
           mkdir -p state
           test -f "$AERO_HISTORIAL" || printf '[]\n' > "$AERO_HISTORIAL"
-          if [[ -z "$GEMINI_API_KEY" && -z "$GROQ_API_KEY" ]]; then
-            echo '::error::Crea GEMINI_API_KEY y/o GROQ_API_KEY en Repository secrets.'
+          if [[ -z "$GEMINI_API_KEY" && -z "$GROQ_API_KEY" && -z "$OPENROUTER_API_KEY" ]]; then
+            echo '::error::Crea GEMINI_API_KEY, GROQ_API_KEY u OPENROUTER_API_KEY en Repository secrets.'
             exit 1
           fi
           if [[ "$AERO_IA_DRY_RUN" != 'true' && "$YOUTUBE_PRIVACY" != 'private' && "$ALLOW_UNREVIEWED_PUBLICATION" != 'true' ]]; then
