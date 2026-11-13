@@ -37,7 +37,7 @@ VERIFICACION_OBLIGATORIA = False # si True, detiene cuando no hay referencias of
 OUTPUT_BASE = Path(os.getenv('AERO_OUTPUT_DIR', '/content/AEROFACTUM' if Path('/content').exists() else 'output/AEROFACTUM'))
 # Guion investigado: Gemini primero, Groq segundo. Nunca usar plantillas si fallan.
 AERO_IA_MODO = os.getenv('AERO_IA_MODO', 'auto').strip().lower()
-GEMINI_MODELO = os.getenv('GEMINI_MODELO', 'gemini-2.5-flash')
+GEMINI_MODELO = os.getenv('GEMINI_MODELO', 'gemini-3.8-flash')
 GROQ_MODELO = os.getenv('GROQ_MODELO', 'openai/gpt-oss-120b')
 AERO_IA_MIN_FUENTES = max(1, int(os.getenv('AERO_IA_MIN_FUENTES', '1')))
 AERO_IA_MIN_DATOS = max(2, int(os.getenv('AERO_IA_MIN_DATOS', '3')))
@@ -858,6 +858,18 @@ def _consultas_fotos(caso):
             'clouds viewed from airplane window',
             'high altitude clouds aerial photograph',
         ]
+    # Fenómenos meteorológicos de aviación: fotos reales, no mapas ni diagramas.
+    # Para windshear, la imagen puede mostrar la tormenta o nube causante
+    # sin que aparezca literalmente una aeronave en el nombre del archivo.
+    if (caso.get('_episodio') or {}).get('caso_id') == 'meteo_03':
+        consultas = [
+            'cumulonimbus thunderstorm',
+            'microburst storm clouds',
+            'thunderstorm rain shaft',
+            'cumulonimbus anvil cloud',
+            'airport thunderstorm weather',
+            'wind shear storm',
+        ]
     # Consultas documentales relacionadas con la utilización de aeronaves:
     # rotaciones, escalas y operaciones reales, no diagramas conceptuales.
     if re.search(r'utilizaci[oó]n diaria|horas de utilizaci[oó]n|rotaci[oó]n de aeronaves', titulo, re.I):
@@ -982,6 +994,29 @@ def evaluar_relevancia_foto(caso, titulo, metadata, busqueda):
         if pistas and detalles and (len(pistas | detalles) >= 2):
             matches = sorted(pistas | detalles)
             return 12 + 3 * len(detalles) + len(pistas), matches
+        return 0, []
+    if (caso.get('_episodio') or {}).get('caso_id') == 'meteo_03':
+        # Evidencias directas y específicas de tormenta convectiva, no basta
+        # la palabra 'clouds', 'sky', 'rain' ni un paisaje genérico.
+        tokens = set(titulo_n.split())
+        fuertes = {'cumulonimbus', 'thunderstorm', 'thunderstorms',
+                   'microburst', 'microbursts', 'downburst', 'downbursts',
+                   'windshear', 'cizalladura', 'tormenta', 'tormentas'}
+        corroborantes = {'anvil', 'convective', 'convection', 'storm',
+                         'stormcloud', 'stormclouds', 'lightning', 'rainshaft',
+                         'squall', 'airport', 'aircraft', 'aviation', 'downdraft'}
+        en_titulo = tokens & fuertes
+        if en_titulo:
+            indicios = en_titulo | (tokens & corroborantes)
+            return 14 + 3 * len(en_titulo) + len(indicios), sorted(indicios)
+        # Cuando el título dice «anvil cloud» o «rain shaft» puede ser
+        # pertinente, siempre que haya dos señales meteorológicas concretas.
+        pares = ({'anvil', 'cloud'}, {'rain', 'shaft'},
+                 {'storm', 'cloud'}, {'convective', 'cloud'})
+        if any(par.issubset(tokens) for par in pares):
+            return 12, sorted(tokens & (corroborantes | {'cloud','rain','shaft'}))
+        # Si no hay evidencia fuerte en el título, no basarse solamente
+        # en categorías amplias o etiquetas de búsqueda de Commons.
         return 0, []
     if not AVIACION_EN_TITULO.search(titulo_l):
         return 0, []
