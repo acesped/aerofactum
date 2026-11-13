@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 4.0 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 4.1 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
@@ -15,7 +15,10 @@ from datetime import datetime, timezone
 # ==================== CONFIGURACIÓN EDITABLE ====================
 TEMA = os.getenv('AERO_TEMA', 'aleatorio')       # caso específico o 'aleatorio'; por defecto no repite episodios
 VOZ = 'es-CL-LorenzoNeural'  # voz fija para TODOS los segmentos de narración
-VELOCIDAD = '+10%'  # ritmo más ágil, sin acelerar el audio después de sintetizarlo
+VELOCIDAD = os.getenv('AERO_VELOCIDAD_VOZ', '-5%').strip()  # Lorenzo más pausado; configurable en GitHub Variables
+if not re.fullmatch(r'[+-]?(?:[0-9]|[1-9][0-9]|100)%', VELOCIDAD):
+    raise ValueError('AERO_VELOCIDAD_VOZ debe ser porcentaje válido, por ejemplo -5%')
+SUBTITULOS_ADELANTO = max(0.0,min(0.65,float(os.getenv('AERO_SUBTITULOS_ADELANTO','0.28'))))  # segundos; antes que la voz
 SALIDA_EN_DRIVE = os.getenv('GITHUB_ACTIONS', '').lower() != 'true'
 CREAR_VISTA_PREVIA = os.getenv('AERO_PREVIEW', 'false').lower() == 'true'      # True = solo miniatura + fotogramas de muestra, sin TTS
 VIDEOS_POR_EJECUCION = int(os.getenv('AERO_VIDEOS_POR_EJECUCION', '1'))       # 1 por defecto; hasta 100 temas únicos
@@ -267,6 +270,34 @@ def _normalizar_evidencia(texto):
     return re.sub(r'\s+',' ',texto).strip().casefold()
 
 
+def _validar_titulo_youtube(datos, caso):
+    """Título atractivo, informativo y conectado al tema original.
+
+    No inventa noticias, resultados ni cifras; la revisión semántica final
+    corresponde al editor, ya que la coincidencia lexical no comprueba hechos.
+    """
+    import unicodedata
+    titulo = re.sub(r'\s+', ' ', str(datos.get('titulo_youtube', ''))).strip().strip('"“”')
+    if not 32 <= len(titulo) <= 95:
+        raise ValueError('titulo_youtube debe tener entre 32 y 95 caracteres.')
+    if titulo.lower().startswith(('qué es ', 'que es ', 'todo sobre ', 'introducción a ', 'introduccion a ')):
+        raise ValueError('Título demasiado genérico: debe despertar curiosidad mediante un hecho o pregunta concreta.')
+    if re.search(r'[#\n\r]|(?:https?://)|[!]{2,}', titulo):
+        raise ValueError('Título con hashtags, URL o puntuación sensacionalista.')
+    prohibidos = ('no lo vas a creer', 'nadie te cuenta', 'te dejará sin palabras',
+                  'te dejara sin palabras', 'impactante revelación', 'impactante revelacion',
+                  'secreto oculto', '100% garantizado')
+    normal = ''.join(c for c in unicodedata.normalize('NFKD',titulo.casefold()) if not unicodedata.combining(c))
+    if any(x in normal for x in prohibidos):
+        raise ValueError('Título con clickbait no verificable.')
+    original = ''.join(c for c in unicodedata.normalize('NFKD',caso['_titulo_caso'].casefold()) if not unicodedata.combining(c))
+    palabras_clave = {w for w in re.findall(r'[a-z0-9]+',original) if len(w)>=5 and w not in {
+        'porque','cuando','donde','sobre','entre','importa','funciona','explicado','aviones','aviacion'}}
+    if palabras_clave and not any(w in normal for w in palabras_clave):
+        raise ValueError('Título no menciona ningún concepto identificable del tema; mantén un término técnico central.')
+    return titulo
+
+
 def _validar_guion_ia(datos,documentos,caso):
     """Validación estructural, antigenericidad y citas textuales.
 
@@ -331,8 +362,12 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
        'tema':caso['titulo'], 'categoria':caso['categoria'],
        'idea_de_partida_no_verificada':caso['contexto'],
        'titulos_previos_para_no_repetir':historial_textos,
+       'objetivo_titulo':'Título humano atractivo y fiel a los hechos; distinto del nombre técnico de catálogo.',
        'fuentes_documentales':fuentes_prompt,
        'normas':[ 'Devuelve un objeto JSON, sin markdown ni texto externo.',
+         'Incluye titulo_youtube: título en español de 32 a 95 caracteres, conectado con el tema y con un término central reconocible.',
+         'El título debe plantear curiosidad real: una consecuencia, pregunta, contraste o decisión aeronáutica concreta basada en las fuentes.',
+         'Evita títulos genéricos tipo «Qué es ...», grandilocuencia, falsas primicias, promesas vacías y cifras no documentadas.',
          'Usa EXCLUSIVAMENTE hechos sustentables en las fuentes incluidas; no inventes cifras, fechas, citas o normativa.',
          'Si las fuentes hablan de algo tangencial, delimita con honestidad el alcance; no extrapoles.',
          'Incluye entre 3 y 6 hechos_con_evidencia: {fuente_id, afirmacion, cita_textual}; cita_textual debe copiar literalmente 28 a 240 caracteres consecutivos de texto_fuente.',
@@ -345,7 +380,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
          'No incluyas advertencias tipo "este contenido es educativo".',
          'Evita escribir "un estudio indica" si no hay informe explícito en las fuentes.',
          'El resultado no debe depender de referencias numéricas que no figuren en el texto recuperado.' ],
-       'estructura':{'hechos_con_evidencia':[{'fuente_id':'F1','afirmacion':'hecho','cita_textual':'copia exacta de texto_fuente'}],
+       'estructura':{'titulo_youtube':'¿Por qué cambia [concepto central] cuando [condición concreta]?', 'hechos_con_evidencia':[{'fuente_id':'F1','afirmacion':'hecho','cita_textual':'copia exacta de texto_fuente'}],
                      'bloques':[{'tipo':'gancho','texto':'Narración...'}]}}
     prompt='Escribe JSON válido en español siguiendo esta especificación:\n'+json.dumps(instruccion,ensure_ascii=False)
     motores=['gemini','groq'] if AERO_IA_MODO=='auto' else [AERO_IA_MODO]
@@ -357,8 +392,12 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                 print(f'  Redactando con IA: {motor} intento {intento}/2',flush=True)
                 datos=_consultar_gemini(prompt_motor) if motor=='gemini' else _consultar_groq(prompt_motor)
                 plan=_validar_guion_ia(datos,documentos,caso)
+                titulo_ia=_validar_titulo_youtube(datos,caso)
                 # El CTA permanece como escena final sin subtítulos.
                 plan.append(('cta','Dale Like y Suscríbete a AEROFACTUM para conocer más sobre aviación.'))
+                caso['titulo']=titulo_ia
+                episodio['titulo']=titulo_ia
+                print('  Título YouTube investigado:',titulo_ia,flush=True)
                 (carpeta/'GUION_IA.json').write_text(json.dumps({
                     'motor':motor, 'modelo':GEMINI_MODELO if motor=='gemini' else GROQ_MODELO,
                     'fecha_utc':datetime.now(timezone.utc).isoformat(),
@@ -1085,7 +1124,29 @@ def ass_marca(t):
     n=round(max(0,t)*100);hh,n=divmod(n,360000);mm,n=divmod(n,6000);ss,cc=divmod(n,100)
     return f'{hh}:{mm:02}:{ss:02}.{cc:02}'
 def ass_escape(t):return str(t).replace('\\','\\\\').replace('{','(').replace('}',')').replace('\n','\\N')
+def anticipar_subtitulos(cues, adelanto=SUBTITULOS_ADELANTO):
+    """Desplaza texto respecto a la locución y preserva orden sin solapamientos.
+
+    El archivo ASS incrustado y el SRT externo reciben idénticos tiempos.
+    El texto comienza ligeramente antes que el audio; el final de cada frase
+    no se solapa con la frase siguiente ni con el CTA.
+    """
+    adelantados=[]
+    for a,b,txt in sorted(cues, key=lambda x:(x[0],x[1])):
+        inicio=max(0.0,float(a)-adelanto)
+        fin=max(inicio+0.16,float(b)-adelanto)
+        if adelantados and inicio < adelantados[-1][1]:
+            previo=adelantados[-1]
+            adelantados[-1]=(previo[0],max(previo[0]+0.08,inicio-0.015),previo[2])
+            # Es preferible no mostrar dos cajas encima a la vez.
+            inicio=max(inicio,adelantados[-1][1]+0.015)
+            fin=max(fin,inicio+0.16)
+        adelantados.append((inicio,fin,txt))
+    return adelantados
+
+
 def subtitulos(cues,carpeta, inicio_cta=None):
+    cues=anticipar_subtitulos(cues)
     # Corte adicional: ningún subtítulo, incluido el último anterior,
     # puede aparecer cuando comienza la escena final de Like/Suscríbete.
     # Se aplica tanto al SRT como al ASS incrustado en el MP4.
@@ -1809,7 +1870,7 @@ def producir_episodio(episodio,historial):
         print('Vista previa:',thumb)
         guardar_drive(carpeta)
         return thumb
-    print('Produciendo narración investigada...')
+    print(f'Produciendo narración investigada... voz={VOZ} velocidad={VELOCIDAD}; subtítulos adelantados {SUBTITULOS_ADELANTO:.2f}s',flush=True)
     bloques,cues,voz=generar_voces(plan,carpeta)
     print('Duración narrada:',round(tiempo_medio_audio(voz)/60,2),'minutos')
     inicio_cta=next((b['inicio'] for b in bloques if b['tipo']=='cta'),None)
