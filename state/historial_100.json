@@ -38,5 +38,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=-pJ6KKRS15o",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/future_02_20261113_145001_232886/AEROFACTUM.mp4"
+  },
+  {
+    "episodio": "aero_08",
+    "caso": "aero_08",
+    "titulo": "Centro de presión y estabilidad",
+    "fecha_utc": "2026-11-13T15:38:04.861013+00:00",
+    "youtube_id": "49wWcKbE3TU",
+    "youtube_url": "https://www.youtube.com/watch?v=49wWcKbE3TU",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/aero_08_20261113_153553_275640/AEROFACTUM.mp4"
   }
 ]
