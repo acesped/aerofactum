@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 4.1 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 4.2 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
@@ -121,24 +121,84 @@ def _relevancia_documento(texto, caso):
     return len([x for x in tokens if re.search(r'\b'+re.escape(x)+r'\b',t)])
 
 
+def _extraer_pdf_oficial(response, caso):
+    """Obtiene fragmentos relevantes de un PDF técnico; nunca lo trata como HTML.
+
+    Solo PDFs publicados bajo dominios de instituciones aeronáuticas confiables.
+    Extrae un máximo de páginas y tamaño de fichero para proteger GitHub Actions.
+    """
+    import io
+    from urllib.parse import urlparse
+    from pypdf import PdfReader
+    host=(urlparse(response.url).hostname or '').lower()
+    permitidos=('faa.gov','easa.europa.eu','icao.int','iata.org','weather.gov','noaa.gov')
+    if not any(host==d or host.endswith('.'+d) for d in permitidos):
+        return ''
+    limite=23_000_000
+    if len(response.content)>limite:
+        print('  PDF oficial demasiado grande:',response.url[:110],flush=True)
+        return ''
+    try:
+        lector=PdfReader(io.BytesIO(response.content),strict=False)
+        secciones=[]
+        for i,pagina in enumerate(lector.pages):
+            if i>=min(90,len(lector.pages)):break
+            txt=re.sub(r'\s+',' ',pagina.extract_text() or '').strip()
+            if len(txt)<100:continue
+            coincidencias=_relevancia_documento(txt,caso)
+            if coincidencias:
+                secciones.append((coincidencias,i,txt))
+        # Favorecer secciones que realmente hablan del tema, no portadas/índices.
+        secciones.sort(key=lambda x:(-x[0],x[1]))
+        fragmentos=[]
+        for _,num,txt in secciones[:5]:
+            claves=_tokens_tema(caso)
+            cortes=[]
+            for clave in claves:
+                for m in list(re.finditer(r'\b'+re.escape(clave)+r'\b',txt,re.I))[:5]:
+                    cortes.append((max(0,m.start()-440),min(len(txt),m.end()+950)))
+            for a,b in sorted(cortes)[:6]:
+                fragmentos.append(f'[Página {num+1}] '+txt[a:b])
+                if sum(map(len,fragmentos))>=10500:break
+            if sum(map(len,fragmentos))>=10500:break
+        return ' '.join(fragmentos)[:11500]
+    except Exception as e:
+        print('  No se pudo extraer el PDF oficial:',type(e).__name__,str(e)[:110],flush=True)
+        return ''
+
+
 def _leer_documento_web(session,url,caso,origen):
     from urllib.parse import urlparse
     if not url.startswith('https://'):return None
     host=urlparse(url).hostname or ''
-    # Nunca acceder a IPs internas ni localhost: evita URLs arbitrarias inseguras.
     if host in {'localhost','127.0.0.1','0.0.0.0'} or host.endswith('.local'):
         return None
     try:
-        respuesta=session.get(url,timeout=(8,17),allow_redirects=True,headers={
-            'User-Agent':'AEROFACTUM/4.0 (+https://acesped.github.io/aerofactum/; contacto: ari.cesped@gmail.com)'})
+        # Evita descargar PDFs arbitrariamente grandes; límite por Content-Length.
+        respuesta=session.get(url,timeout=(8,25),allow_redirects=True,headers={
+            'User-Agent':'AEROFACTUM/4.2 (https://acesped.github.io/aerofactum/; contacto: ari.cesped@gmail.com)'},stream=True)
         respuesta.raise_for_status()
-        if len(respuesta.content)>1_800_000:return None
         mime=respuesta.headers.get('Content-Type','text/html').lower()
-        if not ('html' in mime or 'text/plain' in mime):return None
-        texto=_limpiar_texto_web(respuesta.text,mime)
-        if len(texto)<550 or _relevancia_documento(texto,caso)<1:return None
+        es_pdf='pdf' in mime or urlparse(respuesta.url).path.lower().endswith('.pdf')
+        limite=23_000_000 if es_pdf else 1_800_000
+        if int(respuesta.headers.get('Content-Length','0') or '0')>limite:
+            respuesta.close();return None
+        piezas=[];acumulado=0
+        for pieza in respuesta.iter_content(chunk_size=65536):
+            acumulado+=len(pieza)
+            if acumulado>limite:
+                respuesta.close();return None
+            piezas.append(pieza)
+        contenido=b''.join(piezas)
+        if es_pdf:
+            respuesta._content=contenido
+            texto=_extraer_pdf_oficial(respuesta,caso)
+        elif 'html' in mime or 'text/plain' in mime:
+            texto=_limpiar_texto_web(contenido.decode(respuesta.encoding or 'utf-8','replace'),mime)
+        else:
+            return None
+        if len(texto)<450 or _relevancia_documento(texto,caso)<1:return None
         dominio=urlparse(respuesta.url).hostname or ''
-        # Si no hay artículo externo accesible, no se cita la portada de Google News.
         if dominio.endswith('news.google.com'):return None
         return {'id':'', 'nombre':origen[:120], 'url':respuesta.url,
                 'fecha_consulta':datetime.now(timezone.utc).isoformat(),
@@ -148,53 +208,55 @@ def _leer_documento_web(session,url,caso,origen):
         return None
 
 
-def investigar_episodio(caso, carpeta, session):
-    """Fuentes reales: páginas oficiales + artículos relacionados desde RSS.
+def _rutas_documentacion_oficial(caso):
+    """Enlaces directos a documentos oficiales concretos, priorizados por tema."""
+    rutas={
+      'nav_03':[
+        ('FAA: PHAK, capítulo 8 Flight Instruments',
+         'https://www.faa.gov/regulationspolicies/handbooksmanuals/aviation/phak/chapter-8-flight-instruments'),
+        ('FAA: Instrument Flying Handbook',
+         'https://www.faa.gov/sites/faa.gov/files/pilots/FAA-H-8083-15B.pdf')],
+    }
+    return rutas.get(caso.get('_episodio',{}).get('caso_id',caso.get('id','')),[])
 
-    El RSS sirve para *descubrir* enlaces: el contenido debe descargarse de la
-    fuente final para poder sustentar una afirmación. Sin datos, no publica.
+
+def _descubrir_pdf_faa(session, url, caso):
+    """En páginas de capítulos FAA, localizar el documento PDF asociado."""
+    from urllib.parse import urljoin,urlparse
+    if 'faa.gov' not in (urlparse(url).hostname or ''):return []
+    try:
+        from bs4 import BeautifulSoup
+        resp=session.get(url,timeout=(7,17))
+        if not resp.ok or 'html' not in resp.headers.get('Content-Type','text/html'):return []
+        soup=BeautifulSoup(resp.text,'html.parser')
+        candidatos=[]
+        for a in soup.find_all('a',href=True):
+            href=urljoin(resp.url,a['href'])
+            nombre=a.get_text(' ',strip=True)
+            if urlparse(href).path.lower().endswith('.pdf') and 'faa.gov' in (urlparse(href).hostname or ''):
+                candidatos.append((href,nombre))
+        return candidatos[:2]
+    except Exception:return []
+
+
+def investigar_episodio(caso, carpeta, session):
+    """Investiga documentos legibles primero; RSS/GDELT son opcionales.
+
+    Nunca declara fuentes verificadas por el simple hecho de alcanzar una URL.
+    Si ninguna fuente proporciona texto relevante, detiene la publicación.
     """
-    from urllib.parse import quote, urlparse
+    from urllib.parse import quote
     import xml.etree.ElementTree as ET
     consultas=[]
     for valor in AERO_IA_URLS.split('|'):
         if valor.strip():consultas.append((valor.strip(),'Fuente adicional'))
+    consultas.extend((url,nombre) for nombre,url in _rutas_documentacion_oficial(caso))
     for item in caso.get('fuentes',[]):
         if isinstance(item,(list,tuple)) and len(item)>=2:
             consultas.append((item[1],item[0]))
-    # Noticias pertinentes como material adicional. GDELT entrega enlaces
-    # DIRECTOS a las fuentes; no usamos titulares agregados como prueba.
-    consulta=' '.join(caso.get('imagenes',[])[:1]).strip() or caso['titulo']
-    try:
-        gdelt=session.get('https://api.gdeltproject.org/api/v2/doc/doc',
-            params={'query':consulta+' aviation','mode':'artlist','format':'json',
-                    'maxrecords':8,'timespan':'3months'},timeout=(7,16),
-            headers={'User-Agent':'AEROFACTUM/4.0 (+https://acesped.github.io/aerofactum/)'})
-        if gdelt.ok:
-            for articulo in gdelt.json().get('articles',[])[:8]:
-                link=articulo.get('url','')
-                if link.startswith('https://'):
-                    consultas.append((link,articulo.get('title','Noticias aeronáuticas')))
-        else:
-            print('  Descubrimiento GDELT:',gdelt.status_code,flush=True)
-    except Exception as e:
-        print('  GDELT no disponible:',str(e)[:130],flush=True)
-    consultas_rss=[consulta+' aviation', caso['titulo']+' aeronáutica']
-    for q in consultas_rss:
-        try:
-            url='https://news.google.com/rss/search?q='+quote(q)+'&hl=es-419&gl=US&ceid=US:es'
-            r=session.get(url,timeout=(7,14),headers={'User-Agent':'AEROFACTUM/4.0 (+https://acesped.github.io/aerofactum/)'})
-            r.raise_for_status()
-            raiz=ET.fromstring(r.content)
-            for elemento in raiz.findall('./channel/item')[:5]:
-                titulo=(elemento.findtext('title') or 'Artículo de actualidad')[:120]
-                link=(elemento.findtext('link') or '').strip()
-                if link:consultas.append((link,titulo))
-        except Exception as e:
-            print('  RSS no disponible:',str(e)[:140],flush=True)
-    documentos=[];vistos=set()
-    for url,nombre in consultas[:15]:
-        if url in vistos:continue
+    documentos=[];vistos=set();rechazadas=[]
+    def probar(url,nombre):
+        if url in vistos:return False
         vistos.add(url)
         doc=_leer_documento_web(session,url,caso,nombre)
         if doc and doc['url'] not in {d['url'] for d in documentos}:
@@ -202,8 +264,46 @@ def investigar_episodio(caso, carpeta, session):
             documentos.append(doc)
             print('  Documento leído:',doc['id'],doc['nombre'][:65],
                   f"({len(doc['texto'])} caracteres)",flush=True)
+            return True
+        rechazadas.append(url[:200]);return False
+    # 1) Documentación técnica primero, sin depender de GDELT.
+    for url,nombre in consultas[:12]:
         if len(documentos)>=5:break
-    informe={'tema':caso['titulo'], 'consultados':len(vistos),
+        if not probar(url,nombre) and 'faa.gov' in url and not url.lower().endswith('.pdf'):
+            for pdf,titulo in _descubrir_pdf_faa(session,url,caso):
+                if len(documentos)>=5:break
+                probar(pdf,'FAA: '+(titulo or nombre))
+    consultas_oficiales=list(consultas)
+    # 2) La actualidad complementa el manual; no condiciona la posibilidad de investigarlo.
+    if len(documentos)<2:
+        consulta=' '.join(caso.get('imagenes',[])[:1]).strip() or caso['titulo']
+        try:
+            gdelt=session.get('https://api.gdeltproject.org/api/v2/doc/doc',
+                params={'query':consulta+' aviation','mode':'artlist','format':'json',
+                        'maxrecords':5,'timespan':'3months'},timeout=(5,9))
+            if gdelt.ok:
+                for articulo in gdelt.json().get('articles',[])[:5]:
+                    url=articulo.get('url','')
+                    if url.startswith('https://'):
+                        consultas.append((url,articulo.get('title','Noticia aeronáutica')))
+            else:print('  GDELT opcional:',gdelt.status_code,flush=True)
+        except Exception as e:
+            print('  GDELT opcional no disponible:',str(e)[:110],flush=True)
+        for q in [consulta+' aviation',caso['titulo']+' aeronáutica']:
+            try:
+                url='https://news.google.com/rss/search?q='+quote(q)+'&hl=es-419&gl=US&ceid=US:es'
+                r=session.get(url,timeout=(5,9))
+                r.raise_for_status()
+                for item in ET.fromstring(r.content).findall('./channel/item')[:3]:
+                    link=(item.findtext('link') or '').strip()
+                    if link:consultas.append((link,(item.findtext('title') or 'Noticia')[:120]))
+            except Exception as e:
+                print('  RSS opcional no disponible:',str(e)[:90],flush=True)
+        for url,nombre in consultas[len(consultas_oficiales):len(consultas_oficiales)+12]:
+            if len(documentos)>=5:break
+            probar(url,nombre)
+    informe={'tema':caso['titulo'],'consultados':len(vistos),
+             'descartadas':rechazadas,
              'fuentes':[{'id':d['id'],'nombre':d['nombre'],'url':d['url'],
                          'coincidencias_tema':d['coincidencias_tema'],
                          'extracto':d['texto'][:900]} for d in documentos]}
@@ -211,7 +311,8 @@ def investigar_episodio(caso, carpeta, session):
         json.dumps(informe,ensure_ascii=False,indent=2),encoding='utf-8')
     if len(documentos)<AERO_IA_MIN_FUENTES:
         raise RuntimeError(f'Investigación insuficiente: {len(documentos)} fuentes legibles; '
-                           f'mínimo {AERO_IA_MIN_FUENTES}. No se usará el guion genérico ni se publicará.')
+                           f'mínimo {AERO_IA_MIN_FUENTES}. Consultar FUENTES_INVESTIGACION.json. '
+                           'No se usará el guion genérico ni se publicará.')
     return documentos
 
 
