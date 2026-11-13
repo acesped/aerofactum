@@ -8,5 +8,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=8auGbIRRi0Y",
     "youtube_estado": "pendiente: miniatura: <HttpError 403 when requesting https://youtube.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=8auGbIRRi0Y&alt=json&uploadType=media returned \"The authenticated user doesn't have permissions to upload and set custom video thumbnails.\". Details: \"[{'message': \"The authenticated user doesn't have permissions to upload and set custom video thumbnails.\", 'domain': 'youtube.thumbnail', 'reason': 'forbidden', 'location': 'Authorization', 'locationType': 'header'}]\">",
     "salida": "output/AEROFACTUM/ops_07_20261113_121054_657941/AEROFACTUM.mp4"
+  },
+  {
+    "episodio": "atc_08",
+    "caso": "atc_08",
+    "titulo": "Qué es el turnaround",
+    "fecha_utc": "2026-11-13T13:49:46.917482+00:00",
+    "youtube_id": "6YwO415uTJg",
+    "youtube_url": "https://www.youtube.com/watch?v=6YwO415uTJg",
+    "youtube_estado": "pendiente: miniatura: La miniatura NO se publicó: <HttpError 403 when requesting https://youtube.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=6YwO415uTJg&alt=json&uploadType=media returned \"The authenticated user doesn't have permissions to upload and set custom video thumbnails.\". Details: \"[{'message': \"The authenticated user doesn't have permissions to upload and set custom video thumbnails.\", 'domain': 'youtube.thumbnail', 'reason': 'forbidden', 'location': 'Authorization', 'locationType': 'header'}]\">",
+    "salida": "output/AEROFACTUM/atc_08_20261113_134843_651222/AEROFACTUM.mp4"
   }
 ]
