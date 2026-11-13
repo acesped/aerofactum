@@ -1,29 +1,27 @@
-
-name: AEROFACTUM · producir y publicar en YouTube
+name: AEROFACTUM · investigación IA y publicación YouTube
 
 on:
   schedule:
-    # Diario 13:17 UTC = 10:17 en São Paulo (UTC-3).
-    # GitHub Actions puede retrasar los trabajos programados.
+    # 13:17 UTC = 10:17 São Paulo. El horario puede sufrir retrasos.
     - cron: '17 13 * * *'
-
   workflow_dispatch:
     inputs:
       tema:
-        description: 'Tema: aleatorio o identificador, p. ej. aero_01'
+        description: 'Tema: aleatorio o ID (p. ej. aero_01)'
+        type: string
         required: false
         default: 'aleatorio'
-        type: string
-
       privacidad:
-        description: 'Privacidad para esta ejecución'
+        description: 'Visibilidad del episodio'
+        type: choice
         required: true
         default: 'private'
-        type: choice
-        options:
-          - private
-          - unlisted
-          - public
+        options: [private, unlisted, public]
+      solo_guion:
+        description: 'Solo investigar y generar guion (sin video ni publicación)'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -36,25 +34,24 @@ jobs:
   producir-publicar:
     runs-on: ubuntu-24.04
     timeout-minutes: 330
-
     env:
       PYTHONUNBUFFERED: '1'
-      PUBLICAR_EN_YOUTUBE: 'true'
       GITHUB_ACTIONS: 'true'
-
+      PUBLICAR_EN_YOUTUBE: 'true'
       AERO_HISTORIAL: state/historial_100.json
       AERO_OUTPUT_DIR: output/AEROFACTUM
       AERO_VIDEOS_POR_EJECUCION: '1'
-
       AERO_TEMA: ${{ inputs.tema || 'aleatorio' }}
-
-      # Privado por defecto.
+      AERO_IA_MODO: ${{ vars.AERO_IA_MODO || 'auto' }}
+      GEMINI_MODELO: ${{ vars.GEMINI_MODELO || 'gemini-2.5-flash' }}
+      GROQ_MODELO: ${{ vars.GROQ_MODELO || 'openai/gpt-oss-120b' }}
+      AERO_IA_MIN_FUENTES: ${{ vars.AERO_IA_MIN_FUENTES || '1' }}
+      AERO_IA_MIN_DATOS: '3'
+      AERO_IA_DRY_RUN: ${{ inputs.solo_guion && 'true' || 'false' }}
       YOUTUBE_PRIVACY: ${{ inputs.privacidad || vars.YOUTUBE_PRIVACY || 'private' }}
-
-      # Activar solo después de revisar la calidad editorial.
       ALLOW_UNREVIEWED_PUBLICATION: ${{ vars.ALLOW_UNREVIEWED_PUBLICATION || 'false' }}
-
-      # Credenciales OAuth protegidas.
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
       YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
@@ -65,29 +62,23 @@ jobs:
         with:
           persist-credentials: true
 
-      - name: Validar archivos y modo de publicación
+      - name: Comprobar estructura y parámetros
         shell: bash
         run: |
-          test -f aerofactum.py || {
-            echo '::error::Falta aerofactum.py en la raíz'
-            exit 1
-          }
-
-          test -f requirements.txt || {
-            echo '::error::Falta requirements.txt en la raíz'
-            exit 1
-          }
-
+          set -euo pipefail
+          test -s aerofactum.py || { echo '::error::Falta aerofactum.py'; exit 1; }
+          test -s requirements.txt || { echo '::error::Falta requirements.txt'; exit 1; }
           mkdir -p state
           test -f "$AERO_HISTORIAL" || printf '[]\n' > "$AERO_HISTORIAL"
-
-          if [[ "$YOUTUBE_PRIVACY" != 'private' && "$ALLOW_UNREVIEWED_PUBLICATION" != 'true' ]]; then
-            echo '::error::Para publicar en public o unlisted configura ALLOW_UNREVIEWED_PUBLICATION=true en Actions > Variables.'
+          if [[ -z "$GEMINI_API_KEY" && -z "$GROQ_API_KEY" ]]; then
+            echo '::error::Crea GEMINI_API_KEY y/o GROQ_API_KEY en Repository secrets.'
             exit 1
           fi
-
-          echo "Privacidad seleccionada: $YOUTUBE_PRIVACY"
-          echo "Tema seleccionado: $AERO_TEMA"
+          if [[ "$AERO_IA_DRY_RUN" != 'true' && "$YOUTUBE_PRIVACY" != 'private' && "$ALLOW_UNREVIEWED_PUBLICATION" != 'true' ]]; then
+            echo '::error::Para subir public/unlisted configura ALLOW_UNREVIEWED_PUBLICATION=true o usa private.'
+            exit 1
+          fi
+          echo "Tema=$AERO_TEMA · IA=$AERO_IA_MODO · privacidad=$YOUTUBE_PRIVACY · solo_guion=$AERO_IA_DRY_RUN"
 
       - name: Instalar Python 3.11
         uses: actions/setup-python@v5
@@ -96,54 +87,60 @@ jobs:
           cache: 'pip'
           cache-dependency-path: requirements.txt
 
-      - name: Instalar FFmpeg, fuentes y Cairo
+      - name: Instalar FFmpeg, Cairo y fuentes
+        if: env.AERO_IA_DRY_RUN != 'true'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            ffmpeg \
-            fonts-dejavu-core \
-            libcairo2 \
-            libffi-dev \
-            pkg-config
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core libcairo2 libffi-dev pkg-config
 
       - name: Instalar dependencias Python
         run: |
+          python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
+          python -m py_compile aerofactum.py
+
+      - name: Validar claves IA
+        run: python aerofactum.py --check-ia
 
       - name: Confirmar autorización para @aerofactum
-        run: |
-          python aerofactum.py --check-auth
+        if: env.AERO_IA_DRY_RUN != 'true'
+        run: python aerofactum.py --check-auth
 
-      - name: Generar documental y publicarlo
-        run: |
-          python aerofactum.py
+      - name: Investigar, producir y publicar (o probar solo guion)
+        run: python aerofactum.py
 
-      - name: Guardar historial en GitHub incluso si falla un paso posterior
+      - name: Persistir historial si hubo video registrado
         if: always()
         shell: bash
         run: |
+          set -euo pipefail
           if [ -f "$AERO_HISTORIAL" ]; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-
             git add "$AERO_HISTORIAL"
-
             if ! git diff --cached --quiet; then
-              git commit -m 'AEROFACTUM: actualizar historial de publicaciones [skip ci]'
+              git commit -m 'AEROFACTUM: persistir historial [skip ci]'
               git push origin "HEAD:${GITHUB_REF_NAME}"
             fi
           fi
 
-      - name: Guardar diagnóstico (sin tokens ni MP4)
+      - name: Guardar guion y diagnósticos (no videos ni secretos)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: aerofactum-diagnostico-${{ github.run_id }}
-          if-no-files-found: ignore
+          name: aerofactum-informe-${{ github.run_id }}
           retention-days: 14
+          if-no-files-found: ignore
           path: |
+            output/AEROFACTUM/**/GUION_IA.json
+            output/AEROFACTUM/**/GUION_PREVIO.txt
+            output/AEROFACTUM/**/GUION_COMPLETO.txt
+            output/AEROFACTUM/**/FUENTES_INVESTIGACION.json
+            output/AEROFACTUM/**/ERROR_GUION_IA.txt
             output/AEROFACTUM/**/PUBLICACION_YOUTUBE.json
+            output/AEROFACTUM/**/MINIATURA_YOUTUBE.json
             output/AEROFACTUM/**/auditoria_fuentes.json
             output/AEROFACTUM/**/imagenes_descartadas.json
             output/AEROFACTUM/**/RESUMEN_RECURSOS_VISUALES.txt
+            output/AEROFACTUM/**/AVISO_PUBLICACION_BLOQUEADA.txt
             output/AEROFACTUM/**/AVISO_SIN_FOTOGRAFIAS.txt
