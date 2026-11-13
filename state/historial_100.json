@@ -18,5 +18,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=6YwO415uTJg",
     "youtube_estado": "pendiente: miniatura: La miniatura NO se publicó: <HttpError 403 when requesting https://youtube.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=6YwO415uTJg&alt=json&uploadType=media returned \"The authenticated user doesn't have permissions to upload and set custom video thumbnails.\". Details: \"[{'message': \"The authenticated user doesn't have permissions to upload and set custom video thumbnails.\", 'domain': 'youtube.thumbnail', 'reason': 'forbidden', 'location': 'Authorization', 'locationType': 'header'}]\">",
     "salida": "output/AEROFACTUM/atc_08_20261113_134843_651222/AEROFACTUM.mp4"
+  },
+  {
+    "episodio": "fin_06",
+    "caso": "fin_06",
+    "titulo": "Comprar o arrendar un avión",
+    "fecha_utc": "2026-11-13T14:27:01.779168+00:00",
+    "youtube_id": "tUz8cyerbH8",
+    "youtube_url": "https://www.youtube.com/watch?v=tUz8cyerbH8",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/fin_06_20261113_142529_821842/AEROFACTUM.mp4"
   }
 ]
