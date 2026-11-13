@@ -1,16 +1,20 @@
+
 name: AEROFACTUM · producir y publicar en YouTube
 
 on:
   schedule:
-    # Diario 13:17 UTC = 10:17 hora de São Paulo (UTC-3).
-    # GitHub puede retrasar ejecuciones programadas.
+    # Diario 13:17 UTC = 10:17 en São Paulo (UTC-3).
+    # GitHub Actions puede retrasar los trabajos programados.
     - cron: '17 13 * * *'
+
   workflow_dispatch:
     inputs:
       tema:
-        description: 'Tema (aleatorio o id del catálogo, p.ej. aero_01)'
+        description: 'Tema: aleatorio o identificador, p. ej. aero_01'
         required: false
         default: 'aleatorio'
+        type: string
+
       privacidad:
         description: 'Privacidad para esta ejecución'
         required: true
@@ -22,7 +26,7 @@ on:
           - public
 
 permissions:
-  contents: write # Solo para guardar state/historial_100.json y evitar duplicados.
+  contents: write
 
 concurrency:
   group: aerofactum-publicacion
@@ -32,17 +36,25 @@ jobs:
   producir-publicar:
     runs-on: ubuntu-24.04
     timeout-minutes: 330
+
     env:
       PYTHONUNBUFFERED: '1'
       PUBLICAR_EN_YOUTUBE: 'true'
       GITHUB_ACTIONS: 'true'
+
       AERO_HISTORIAL: state/historial_100.json
       AERO_OUTPUT_DIR: output/AEROFACTUM
       AERO_VIDEOS_POR_EJECUCION: '1'
-      AERO_TEMA: ${{ github.event.inputs.tema || 'aleatorio' }}
-      YOUTUBE_PRIVACY: ${{ github.event.inputs.privacidad || vars.YOUTUBE_PRIVACY || 'private' }}
-      # Por seguridad, la publicación pública queda desactivada hasta habilitarla.
+
+      AERO_TEMA: ${{ inputs.tema || 'aleatorio' }}
+
+      # Privado por defecto.
+      YOUTUBE_PRIVACY: ${{ inputs.privacidad || vars.YOUTUBE_PRIVACY || 'private' }}
+
+      # Activar solo después de revisar la calidad editorial.
       ALLOW_UNREVIEWED_PUBLICATION: ${{ vars.ALLOW_UNREVIEWED_PUBLICATION || 'false' }}
+
+      # Credenciales OAuth protegidas.
       YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
       YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
@@ -52,6 +64,30 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: true
+
+      - name: Validar archivos y modo de publicación
+        shell: bash
+        run: |
+          test -f aerofactum.py || {
+            echo '::error::Falta aerofactum.py en la raíz'
+            exit 1
+          }
+
+          test -f requirements.txt || {
+            echo '::error::Falta requirements.txt en la raíz'
+            exit 1
+          }
+
+          mkdir -p state
+          test -f "$AERO_HISTORIAL" || printf '[]\n' > "$AERO_HISTORIAL"
+
+          if [[ "$YOUTUBE_PRIVACY" != 'private' && "$ALLOW_UNREVIEWED_PUBLICATION" != 'true' ]]; then
+            echo '::error::Para publicar en public o unlisted configura ALLOW_UNREVIEWED_PUBLICATION=true en Actions > Variables.'
+            exit 1
+          fi
+
+          echo "Privacidad seleccionada: $YOUTUBE_PRIVACY"
+          echo "Tema seleccionado: $AERO_TEMA"
 
       - name: Instalar Python 3.11
         uses: actions/setup-python@v5
@@ -63,25 +99,35 @@ jobs:
       - name: Instalar FFmpeg, fuentes y Cairo
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core libcairo2 libffi-dev pkg-config
+          sudo apt-get install -y -qq \
+            ffmpeg \
+            fonts-dejavu-core \
+            libcairo2 \
+            libffi-dev \
+            pkg-config
 
       - name: Instalar dependencias Python
-        run: python -m pip install -r requirements.txt
+        run: |
+          python -m pip install -r requirements.txt
 
       - name: Confirmar autorización para @aerofactum
-        run: python aerofactum.py --check-auth
+        run: |
+          python aerofactum.py --check-auth
 
       - name: Generar documental y publicarlo
-        run: python aerofactum.py
+        run: |
+          python aerofactum.py
 
       - name: Guardar historial en GitHub incluso si falla un paso posterior
         if: always()
         shell: bash
         run: |
-          if [ -f state/historial_100.json ]; then
+          if [ -f "$AERO_HISTORIAL" ]; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add state/historial_100.json
+
+            git add "$AERO_HISTORIAL"
+
             if ! git diff --cached --quiet; then
               git commit -m 'AEROFACTUM: actualizar historial de publicaciones [skip ci]'
               git push origin "HEAD:${GITHUB_REF_NAME}"
