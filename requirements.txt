@@ -10,3 +10,4 @@ google-auth-oauthlib>=1.1,<2
 google-auth-httplib2>=0.2,<1
 httplib2>=0.22,<1
 pypdf>=5.0,<7
+fonttools>=4.50,<5
