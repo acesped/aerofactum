@@ -43,7 +43,7 @@ jobs:
       AERO_VIDEOS_POR_EJECUCION: '1'
       AERO_TEMA: ${{ inputs.tema || 'aleatorio' }}
       AERO_IA_MODO: ${{ vars.AERO_IA_MODO || 'auto' }}
-      GEMINI_MODELO: ${{ vars.GEMINI_MODELO || 'gemini-2.5-flash' }}
+      GEMINI_MODELO: ${{ vars.GEMINI_MODELO || 'gemini-3.8-flash' }}
       GROQ_MODELO: ${{ vars.GROQ_MODELO || 'openai/gpt-oss-120b' }}
       AERO_IA_MIN_FUENTES: ${{ vars.AERO_IA_MIN_FUENTES || '1' }}
       AERO_IA_MIN_DATOS: '3'
