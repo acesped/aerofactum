@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 3.0 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 3.1 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 Ninguna API de pago. CPU. Sin fotografías inventadas por IA.
@@ -24,7 +24,7 @@ REINICIAR_CATALOGO_AL_AGOTAR = False
 FOTOGRAMAS_POR_SEGUNDO = 15
 ANCHO, ALTO = 1920, 1080        # render nativo Full HD para exportación 1080p real
 IMAGENES_MINIMAS = 4            # objetivo visual; buscará imágenes adicionales si faltan
-IMAGENES_MINIMAS_ABSOLUTAS = 1 # mínimo de fotografías auténticas; si no hay, detener (sin esquemas)
+IMAGENES_MINIMAS_ABSOLUTAS = 1 # mínimo para crear borradores privados; publicación no privada exige IMAGENES_MINIMAS
 MAX_IMAGENES = 10
 VERIFICACION_OBLIGATORIA = False # si True, detiene cuando no hay referencias oficiales accesibles
 OUTPUT_BASE = Path(os.getenv('AERO_OUTPUT_DIR', '/content/AEROFACTUM' if Path('/content').exists() else 'output/AEROFACTUM'))
@@ -345,6 +345,17 @@ def _consultas_fotos(caso):
     titulo=caso.get('_titulo_caso',caso.get('titulo',''))
     categoria=caso.get('categoria','')
     consultas=list(caso.get('imagenes',[]))
+    # Consultas documentales relacionadas con la utilización de aeronaves:
+    # rotaciones, escalas y operaciones reales, no diagramas conceptuales.
+    if re.search(r'utilizaci[oó]n diaria|horas de utilizaci[oó]n|rotaci[oó]n de aeronaves', titulo, re.I):
+        consultas = [
+            'aircraft turnaround airport apron',
+            'airliner boarding at airport gate',
+            'aircraft ground handling airport',
+            'airliner taxiing airport',
+            'aircraft parked at airport terminal',
+            'airline aircraft boarding passengers',
+        ] + consultas
     if re.search(r'briefing|reunión previa|preparación de salida', titulo, re.I):
         consultas=CONSULTAS_VISUALES_AERONAUTICAS['briefing']+consultas
     for palabra, alternativas in CONSULTAS_VISUALES_AERONAUTICAS.items():
@@ -445,10 +456,36 @@ def evaluar_relevancia_foto(caso, titulo, metadata, busqueda):
         return 0, []
     return puntos, sorted(directas|extras)
 
+def configurar_reintentos_wikimedia(session):
+    """Reintenta fallos transitorios de Wikimedia sin repetir errores permanentes.
+
+    Solo se aplica a los dominios Wikimedia utilizados por la búsqueda
+    y descarga de fotografías. Mantiene la sesión y los metadatos originales.
+    """
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+    reintentos = Retry(
+        total=3,
+        connect=3,
+        read=2,
+        status=3,
+        backoff_factor=1.0,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset({'GET'}),
+        respect_retry_after_header=True,
+        raise_on_status=False,
+    )
+    adaptador = HTTPAdapter(max_retries=reintentos, pool_connections=4, pool_maxsize=4)
+    session.mount('https://commons.wikimedia.org/', adaptador)
+    session.mount('https://upload.wikimedia.org/', adaptador)
+    return session
+
+
 def buscar_fotos(caso,session,carpeta):
     from PIL import Image,ImageOps
     from io import BytesIO
     fotos=[];creditos=[];hashes=set();descartes=[]
+    configurar_reintentos_wikimedia(session)
     queries=_consultas_fotos(caso)
     # Sólo consultas ancladas al caso concreto, NUNCA búsquedas genéricas
     # como «science research laboratory equipment».
@@ -492,7 +529,10 @@ def buscar_fotos(caso,session,carpeta):
                 if not mini.startswith('https://'):continue
                 candidatos.append((puntos,titulo_archivo,info,mini,matches,busqueda))
         except Exception as exc:
-            print('  Búsqueda Commons falló:',busqueda,'|',str(exc)[:110])
+            motivo=str(exc)[:400]
+            descartes.append({'busqueda':busqueda,'razon':'Error de consulta a Wikimedia Commons',
+                              'detalle':motivo})
+            print('  Búsqueda Commons falló:',busqueda,'|',motivo[:150],flush=True)
     candidatos.sort(key=lambda item:item[0],reverse=True)
     for puntos,archivo,info,url,matches,busqueda in candidatos:
         if len(fotos)>=MAX_IMAGENES:break
@@ -1013,8 +1053,20 @@ def renderizar_clips(bloques,fotos,caso,carpeta):
             ffmpeg(cmd)
             clips.append(clip);numero+=1
         print(f'  Escena {i+1:02}/{len(bloques)}: {frames_escena/fps:.1f}s / {num_planos} planos · {b["tipo"]}',flush=True)
+    # El demuxer concat resuelve cada ruta respecto de clips.ffconcat.
+    # str(c) era una ruta relativa al directorio de trabajo e introducía
+    # dos veces 'output/AEROFACTUM/.../' al resolverla FFmpeg.
     concat=carpeta/'clips.ffconcat'
-    concat.write_text('ffconcat version 1.0\n'+''.join("file '"+str(c).replace("'","'\\''")+"'\n" for c in clips),encoding='utf-8')
+    if not clips:
+        raise RuntimeError('No se generaron clips para concatenar.')
+    lineas=['ffconcat version 1.0']
+    for clip in clips:
+        if not clip.is_file() or clip.stat().st_size == 0:
+            raise FileNotFoundError(f'Clip inexistente o vacío: {clip}')
+        # Solo el nombre del archivo, ya que todos los clips comparten carpeta.
+        nombre=clip.name.replace("'", "'\\''")
+        lineas.append(f"file '{nombre}'")
+    concat.write_text('\n'.join(lineas)+'\n',encoding='utf-8')
     unido=carpeta/'video_sin_subtitulos.mp4'
     ffmpeg(['ffmpeg','-y','-hide_banner','-loglevel','error','-safe','0','-f','concat','-i',str(concat),'-c','copy',str(unido)])
     return unido
@@ -1244,6 +1296,20 @@ def producir_episodio(episodio,historial):
         f'Recursos visuales: {len(fotos)}\nFotografías reales de Wikimedia: {sum(1 for c in creditos if c.get("url_original"))}\nDiagramas e ilustraciones: 0\nObjetivo editorial: {IMAGENES_MINIMAS}\n'
         + ('ADVERTENCIA: Revisar variedad visual y relevancia temática antes de publicar.\n' if len(fotos)<IMAGENES_MINIMAS else 'Cantidad objetivo alcanzada.\n'),
         encoding='utf-8')
+    # Una sola foto puede servir como borrador privado para revisión.
+    # Sin embargo, nunca publicar automáticamente un episodio visible
+    # con menos fotografías pertinentes que el objetivo editorial.
+    if (PUBLICAR_EN_YOUTUBE and YOUTUBE_PRIVACY in ('public','unlisted')
+            and len(fotos) < IMAGENES_MINIMAS):
+        aviso=(f'PUBLICACIÓN BLOQUEADA: {len(fotos)} fotografía(s) real(es) '
+               f'pertinente(s), mínimo editorial {IMAGENES_MINIMAS} para '
+               f'YOUTUBE_PRIVACY={YOUTUBE_PRIVACY}. '
+               'No se publicará un video visualmente repetitivo. '
+               'Reintenta luego de recuperar Wikimedia Commons o ejecuta '
+               'con privacidad private para revisar un borrador.')
+        (carpeta/'AVISO_PUBLICACION_BLOQUEADA.txt').write_text(aviso+'\n',encoding='utf-8')
+        print(aviso,flush=True)
+        raise RuntimeError(aviso)
     thumb=miniatura(caso,fotos,carpeta)
     (carpeta/'episodio.json').write_text(json.dumps(episodio,ensure_ascii=False,indent=2),encoding='utf-8')
     if CREAR_VISTA_PREVIA:
