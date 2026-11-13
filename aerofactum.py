@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 4.3 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 4.4 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
@@ -18,6 +18,10 @@ VOZ = 'es-CL-LorenzoNeural'  # voz fija para TODOS los segmentos de narración
 VELOCIDAD = os.getenv('AERO_VELOCIDAD_VOZ', '-5%').strip()  # Lorenzo más pausado; configurable en GitHub Variables
 if not re.fullmatch(r'[+-]?(?:[0-9]|[1-9][0-9]|100)%', VELOCIDAD):
     raise ValueError('AERO_VELOCIDAD_VOZ debe ser porcentaje válido, por ejemplo -5%')
+# Español siempre con Lorenzo; fragmentos terminológicos en inglés con voz nativa.
+VOZ_INGLES = os.getenv('AERO_VOZ_INGLES', 'en-US-AndrewNeural').strip()
+# La pronunciación inglesa se puede desactivar si se prefiere una sola voz.
+PRONUNCIACION_INGLES = os.getenv('AERO_PRONUNCIACION_INGLES', 'true').lower() == 'true'
 SUBTITULOS_ADELANTO = max(0.0,min(0.65,float(os.getenv('AERO_SUBTITULOS_ADELANTO','0.28'))))  # segundos; antes que la voz
 SALIDA_EN_DRIVE = os.getenv('GITHUB_ACTIONS', '').lower() != 'true'
 CREAR_VISTA_PREVIA = os.getenv('AERO_PREVIEW', 'false').lower() == 'true'      # True = solo miniatura + fotogramas de muestra, sin TTS
@@ -1210,6 +1214,91 @@ def en_hilo(coro):
 def tiempo_medio_audio(path):
     with wave.open(str(path),'rb') as w:return w.getnframes()/w.getframerate()
 
+# Términos aeronáuticos que habitualmente se pronuncian en inglés.
+# Emparejar frases largas antes que palabras sueltas evita cortes incorrectos.
+_TERMINOS_INGLES = (
+    'angle of attack', 'ground handling', 'flight management system',
+    'indicated airspeed', 'true airspeed', 'calibrated airspeed',
+    'ground speed', 'flight deck', 'flight director', 'flight level',
+    'glass cockpit', 'traffic collision avoidance system',
+    'instrument landing system', 'wind shear', 'jet stream',
+    'go-around', 'go around', 'touch and go', 'pushback', 'turnaround',
+    'holding pattern', 'stall', 'spoiler', 'slat', 'flap', 'flaps',
+    'thrust reverser', 'autothrottle', 'autopilot', 'cockpit',
+    'airspeed', 'aircraft', 'airliner', 'airbus', 'boeing',
+    'runway', 'taxiway', 'taxi', 'takeoff', 'landing',
+    'pitch', 'roll', 'yaw', 'heading', 'altitude',
+    'crosswind', 'headwind', 'tailwind', 'downwind',
+    'upwind', 'holding', 'briefing', 'debriefing',
+    'checklist', 'clearance', 'mayday', 'pan-pan',
+    'readback', 'squawk', 'call sign', 'callsign',
+    'bleed air', 'bleed', 'overspeed', 'windshear',
+    'fly-by-wire', 'fly by wire', 'airworthiness',
+    'airframe', 'flight plan', 'ground effect',
+    'wet lease', 'dry lease', 'load factor', 'hub',
+    'slot', 'slots', 'yield', 'block time',
+    'wake turbulence', 'microburst', 'jet lag',
+)
+_SIGLAS_INGLES = (
+    'IAS','TAS','CAS','EAS','ATC','ILS','VOR','DME','GPS','GNSS','TCAS',
+    'GPWS','EGPWS','NOTAM','METAR','TAF','RVR','RNAV','RNP','APU','GPU',
+    'EFB','MEL','ETOPS','FMS','FMC','SID','STAR','VFR','IFR','IATA',
+    'FAA','EASA','ICAO','PAPI','VASI','QNH','QFE','MACH','NDB','ADF',
+)
+# Siglas no ambiguas: se requiere mayúscula exacta (evita 'tas' o 'cas' en español).
+_PATRON_INGLES = re.compile(
+    r'(?<!\w)(?:' + '|'.join(
+        re.escape(t) for t in sorted(_TERMINOS_INGLES, key=len, reverse=True)
+    ) + r')(?!\w)', re.IGNORECASE
+)
+_PATRON_SIGLAS = re.compile(
+    r'(?<![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])(?:' + '|'.join(
+        re.escape(x) for x in sorted(_SIGLAS_INGLES, key=len, reverse=True)
+    ) + r')(?![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])'
+)
+
+def fragmentar_por_idioma(texto):
+    """Conserva el texto original; detecta anglicismos técnicos sin traducirlos."""
+    if not PRONUNCIACION_INGLES:
+        return [('es', texto)]
+    encontrados=[]
+    for m in _PATRON_INGLES.finditer(texto):
+        encontrados.append((m.start(),m.end(),False))
+    for m in _PATRON_SIGLAS.finditer(texto):
+        encontrados.append((m.start(),m.end(),True))
+    # Ordenar por posición, privilegiando coincidencia más larga.
+    encontrados.sort(key=lambda item:(item[0],-(item[1]-item[0])))
+    fragmentos=[]; cursor=0
+    for ini,fin,sigla in encontrados:
+        if ini < cursor: continue
+        if ini>cursor:
+            fragmentos.append(('es',texto[cursor:ini]))
+        literal=texto[ini:fin]
+        pronunciacion=' '.join(literal) if sigla else literal
+        fragmentos.append(('en',literal,pronunciacion))
+        cursor=fin
+    if cursor<len(texto):fragmentos.append(('es',texto[cursor:]))
+    # La puntuación aislada no debe enviarse como un fragmento de voz:
+    # Edge TTS podría devolver audio vacío y detener toda la producción.
+    limpios=[]
+    for item in fragmentos:
+        if not item[1].strip(' \t\r\n,.;:!?¡¿()«»"'):
+            if limpios:
+                anterior=limpios[-1]
+                if len(anterior)==3:
+                    limpios[-1]=(anterior[0],anterior[1]+item[1],anterior[2]+item[1])
+                else:
+                    limpios[-1]=(anterior[0],anterior[1]+item[1])
+            else:
+                # Conservar la puntuación inicial y adjuntarla al siguiente fragmento.
+                limpios.append(item)
+        else:
+            if limpios and not limpios[-1][1].strip(' \t\r\n,.;:!?¡¿()«»"'):
+                previo=limpios.pop()[1]
+                item=(item[0],previo+item[1],previo+item[2]) if len(item)==3 else (item[0],previo+item[1])
+            limpios.append(item)
+    return limpios or [('es',texto)]
+
 def generar_voces(plan,carpeta):
     import edge_tts
     async def tarea():
@@ -1217,51 +1306,71 @@ def generar_voces(plan,carpeta):
         with wave.open(str(salida),'wb') as final:
             final.setnchannels(1);final.setsampwidth(2);final.setframerate(sample_rate)
             for i,(tipo,texto) in enumerate(plan):
-                audio=bytearray();marcas=[]
-                # Motor Edge TTS con reintentos; SIEMPRE la misma voz (Lorenzo).
-                error_tts=None
-                for intento in range(1, 5):
-                    voz_actual = VOZ  # nunca usar voces alternativas
-                    audio.clear();marcas.clear()
-                    try:
-                        tts=edge_tts.Communicate(texto,voice=voz_actual,rate=VELOCIDAD)
-                        async for dato in tts.stream():
-                            if dato['type']=='audio':audio.extend(dato['data'])
-                            elif dato['type']=='WordBoundary':marcas.append((dato['text'],dato['offset']/1e7,dato['duration']/1e7))
-                        if not audio:raise RuntimeError('Edge TTS devolvió un segmento vacío')
-                        if intento>1:print(f'  Narración recuperada en intento {intento}: {voz_actual}',flush=True)
-                        break
-                    except Exception as e:
-                        error_tts=e
-                        print(f'  Aviso TTS voz {i+1}, intento {intento}: {type(e).__name__}: {e}',flush=True)
-                        if intento<4:await asyncio.sleep(2*intento)
-                if not audio:
-                    raise RuntimeError(f'No se pudo sintetizar el bloque {i+1} tras cuatro intentos. Último error: {error_tts}')
-                mp3=carpeta/f'voz_{i:02}.mp3';mp3.write_bytes(audio)
-                wav=carpeta/f'voz_{i:02}.wav'
-                subprocess.run(['ffmpeg','-y','-hide_banner','-loglevel','error','-i',str(mp3),'-ac','1','-ar',str(sample_rate),'-c:a','pcm_s16le',str(wav)],check=True)
-                with wave.open(str(wav),'rb') as individual:
-                    n=individual.getnframes();final.writeframes(individual.readframes(n))
-                inicio=posicion_muestras/sample_rate;dur=n/sample_rate
-                bloques.append(dict(tipo=tipo,texto=texto,inicio=inicio,duracion=dur))
-                # Las marcas vienen del MISMO segmento de audio y se desplazan al inicio global.
-                # La escena final CTA mantiene locución, pero NO subtítulos en pantalla,
-                # para no entorpecer la lectura del texto fijo de la imagen.
-                if tipo!='cta':
-                    if marcas:
-                        grupo=[];comienzo=0;fin=0
-                        for palabra,offset,duracion in marcas:
-                            if not grupo:comienzo=offset
-                            grupo.append(palabra.strip());fin=offset+max(.09,duracion)
-                            if len(grupo)>=7 or fin-comienzo>2.5:
-                                cues.append((inicio+comienzo,inicio+min(dur,fin),' '.join(grupo)));grupo=[]
-                        if grupo:cues.append((inicio+comienzo,inicio+min(dur,fin),' '.join(grupo)))
-                    else:
-                        palabras=texto.split();grupos=max(1,math.ceil(len(palabras)/7))
-                        for j in range(grupos):
-                            cues.append((inicio+dur*j/grupos,inicio+dur*(j+1)/grupos,' '.join(palabras[j*7:(j+1)*7])))
-                posicion_muestras+=n
-                print(f'  Voz {i+1:02}/{len(plan)}: {dur:.1f}s',flush=True)
+                inicio=posicion_muestras/sample_rate
+                marcas=[]
+                fragmentos=fragmentar_por_idioma(texto)
+                voces_usadas=[]
+                for j,frag in enumerate(fragmentos):
+                    idioma,literal=frag[:2]
+                    texto_tts=frag[2] if len(frag)>2 else literal
+                    voz_actual=VOZ_INGLES if idioma=='en' else VOZ
+                    voces_usadas.append(idioma)
+                    audio=bytearray();marcas_fragmento=[];error_tts=None
+                    for intento in range(1,5):
+                        audio.clear();marcas_fragmento.clear()
+                        try:
+                            tts=edge_tts.Communicate(texto_tts,voice=voz_actual,rate=VELOCIDAD)
+                            async for dato in tts.stream():
+                                if dato['type']=='audio':audio.extend(dato['data'])
+                                elif dato['type']=='WordBoundary':
+                                    marcas_fragmento.append((dato['text'],dato['offset']/1e7,dato['duration']/1e7))
+                            if not audio:raise RuntimeError('Edge TTS devolvió audio vacío')
+                            break
+                        except Exception as e:
+                            error_tts=e
+                            print(f'  Aviso TTS escena {i+1} fragmento {j+1}, intento {intento}: {type(e).__name__}: {e}',flush=True)
+                            if intento<4:await asyncio.sleep(2*intento)
+                    if not audio:
+                        raise RuntimeError(f'TTS falló en escena {i+1}, fragmento {j+1} ({voz_actual}): {error_tts}')
+                    mp3=carpeta/f'voz_{i:02}_{j:02}.mp3';mp3.write_bytes(audio)
+                    wav=carpeta/f'voz_{i:02}_{j:02}.wav'
+                    subprocess.run(['ffmpeg','-y','-hide_banner','-loglevel','error',
+                                    '-i',str(mp3),'-ac','1','-ar',str(sample_rate),
+                                    '-c:a','pcm_s16le',str(wav)],check=True)
+                    with wave.open(str(wav),'rb') as individual:
+                        n=individual.getnframes()
+                        final.writeframes(individual.readframes(n))
+                    inicio_fragmento=posicion_muestras/sample_rate
+                    dur=n/sample_rate
+                    if tipo!='cta':
+                        if idioma=='en':
+                            # Mostrar la grafía original (IAS, turnaround) en los subtítulos.
+                            marcas.append((literal.strip(),inicio_fragmento-inicio,dur))
+                        elif marcas_fragmento:
+                            marcas.extend((palabra,inicio_fragmento-inicio+offset,duracion)
+                                          for palabra,offset,duracion in marcas_fragmento)
+                        else:
+                            # Respaldo para fragmentos sin WordBoundary.
+                            palabras=literal.split()
+                            for k,palabra in enumerate(palabras):
+                                marcas.append((palabra,inicio_fragmento-inicio+dur*k/max(1,len(palabras)),
+                                               dur/max(1,len(palabras))))
+                    posicion_muestras+=n
+                dur_total=posicion_muestras/sample_rate-inicio
+                bloques.append(dict(tipo=tipo,texto=texto,inicio=inicio,duracion=dur_total))
+                if tipo!='cta' and marcas:
+                    grupo=[];comienzo=0;fin=0
+                    for palabra,offset,duracion in marcas:
+                        if not grupo:comienzo=offset
+                        grupo.append(palabra.strip());fin=offset+max(.09,duracion)
+                        if len(grupo)>=7 or fin-comienzo>2.5:
+                            cues.append((inicio+comienzo,inicio+min(dur_total,fin),' '.join(grupo)))
+                            grupo=[]
+                    if grupo:cues.append((inicio+comienzo,inicio+min(dur_total,fin),' '.join(grupo)))
+                if 'en' in voces_usadas:
+                    print(f'  Voz {i+1:02}/{len(plan)}: {dur_total:.1f}s · inglés nativo en {voces_usadas.count("en")} término(s)',flush=True)
+                else:
+                    print(f'  Voz {i+1:02}/{len(plan)}: {dur_total:.1f}s',flush=True)
         inicio_cta=next((b['inicio'] for b in bloques if b['tipo']=='cta'),None)
         if inicio_cta is not None:
             cues=[(a,min(b,inicio_cta-0.12),txt) for a,b,txt in cues
