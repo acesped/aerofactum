@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 4.2 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 4.3 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
@@ -104,14 +104,36 @@ def _limpiar_texto_web(contenido, tipo='text/html'):
 
 
 def _tokens_tema(caso):
+    """Palabras temáticas en español e inglés para leer documentación FAA.
+
+    El catálogo usa títulos españoles, pero los manuales de FAA están en inglés.
+    No se admiten palabras genéricas como 'aircraft' como única evidencia.
+    """
     import unicodedata
+    episodio=caso.get('_episodio',{})
+    tema_id=episodio.get('caso_id',caso.get('id',''))
     palabras=(caso.get('titulo','')+' '+caso.get('contexto','')+' '
               +' '.join(caso.get('imagenes',[])[:3])).lower()
     palabras=''.join(c for c in unicodedata.normalize('NFKD',palabras) if not unicodedata.combining(c))
     stop={'que','como','para','por','una','del','los','las','the','and','with','this','from',
           'aircraft','aviation','avion','aviones','aeronave','aeronaves','airplane',
-          'importa','explicado','funciona','airport','airliner','photo','fotografia'}
-    return {p for p in re.findall(r'[a-z]{4,}',palabras) if p not in stop}
+          'importa','explicado','funciona','airport','airliner','photo','fotografia',
+          'frente','real','indicada','velocidad','instrument','indicator'}
+    tokens={p for p in re.findall(r'[a-z]{4,}',palabras) if p not in stop}
+    equivalencias={
+        'nav_01':{'airspeed','indicated','calibrated','true airspeed','pitot','tas','ias'},
+        'nav_02':{'altimeter','altitude','barometric','pressure altitude'},
+        'nav_03':{'attitude','artificial horizon','gyroscopic','pitch','bank'},
+        'nav_04':{'pitot','static pressure','airspeed','pressure system'},
+        'nav_05':{'transponder','secondary surveillance','squawk'},
+        'nav_06':{'localizer','glideslope','instrument landing system'},
+        'nav_07':{'vor','radial','omnidirectional'},
+        'nav_08':{'gps','satellite navigation','gnss'},
+        'nav_09':{'rnav','area navigation'},
+        'nav_10':{'rnp','required navigation performance'},
+        'meteo_07':{'upper winds','jet stream','wind aloft','pressure gradient'},
+    }
+    return tokens | equivalencias.get(tema_id,set())
 
 
 def _relevancia_documento(texto, caso):
@@ -182,11 +204,13 @@ def _leer_documento_web(session,url,caso,origen):
         es_pdf='pdf' in mime or urlparse(respuesta.url).path.lower().endswith('.pdf')
         limite=23_000_000 if es_pdf else 1_800_000
         if int(respuesta.headers.get('Content-Length','0') or '0')>limite:
+            print('  Fuente descartada: supera el límite de tamaño:',respuesta.url[:100],flush=True)
             respuesta.close();return None
         piezas=[];acumulado=0
         for pieza in respuesta.iter_content(chunk_size=65536):
             acumulado+=len(pieza)
             if acumulado>limite:
+                print('  Fuente descartada: descarga supera límite de tamaño:',respuesta.url[:100],flush=True)
                 respuesta.close();return None
             piezas.append(pieza)
         contenido=b''.join(piezas)
@@ -196,8 +220,13 @@ def _leer_documento_web(session,url,caso,origen):
         elif 'html' in mime or 'text/plain' in mime:
             texto=_limpiar_texto_web(contenido.decode(respuesta.encoding or 'utf-8','replace'),mime)
         else:
+            print('  Fuente descartada: formato no admitido:',mime,respuesta.url[:100],flush=True)
             return None
-        if len(texto)<450 or _relevancia_documento(texto,caso)<1:return None
+        puntaje=_relevancia_documento(texto,caso)
+        if len(texto)<450 or puntaje<1:
+            print(f'  Fuente descartada: texto={len(texto)} caracteres; relevancia={puntaje}; '
+                  f'URL={respuesta.url[:100]}',flush=True)
+            return None
         dominio=urlparse(respuesta.url).hostname or ''
         if dominio.endswith('news.google.com'):return None
         return {'id':'', 'nombre':origen[:120], 'url':respuesta.url,
@@ -209,15 +238,38 @@ def _leer_documento_web(session,url,caso,origen):
 
 
 def _rutas_documentacion_oficial(caso):
-    """Enlaces directos a documentos oficiales concretos, priorizados por tema."""
+    """Prioriza capítulos técnicos específicos, no portadas genéricas de manuales.
+
+    Las URLs apuntan a FAA; los enlaces a PDF se descubren de su página.
+    Si falla una URL, se ensaya la siguiente y se registra el descarte.
+    """
+    tema_id=caso.get('_episodio',{}).get('caso_id',caso.get('id',''))
+    phak='https://www.faa.gov/regulationspolicies/handbooksmanuals/aviation/phak/'
     rutas={
+      'nav_01':[
+        ('FAA: PHAK, capítulo 8 Flight Instruments (PDF)',
+         'https://www.faa.gov/sites/faa.gov/files/10_phak_ch8.pdf'),
+        ('FAA: PHAK, capítulo 8 Flight Instruments',phak+'chapter-8-flight-instruments'),
+        ('FAA: Instrument Flying Handbook, IAS y TAS',
+         'https://www.faa.gov/sites/faa.gov/files/pilots/FAA-H-8083-15B.pdf')],
       'nav_03':[
-        ('FAA: PHAK, capítulo 8 Flight Instruments',
-         'https://www.faa.gov/regulationspolicies/handbooksmanuals/aviation/phak/chapter-8-flight-instruments'),
+        ('FAA: PHAK, capítulo 8 Flight Instruments (PDF)',
+         'https://www.faa.gov/sites/faa.gov/files/10_phak_ch8.pdf'),
+        ('FAA: PHAK, capítulo 8 Flight Instruments',phak+'chapter-8-flight-instruments'),
         ('FAA: Instrument Flying Handbook',
          'https://www.faa.gov/sites/faa.gov/files/pilots/FAA-H-8083-15B.pdf')],
     }
-    return rutas.get(caso.get('_episodio',{}).get('caso_id',caso.get('id','')),[])
+    salida=list(rutas.get(tema_id,[]))
+    # Fuente de capítulo preferente por categoría. No equivale a fact-check.
+    capitulos={
+      'INSTRUMENTOS Y NAVEGACIÓN':('FAA: PHAK, capítulo 8 Flight Instruments',
+                                  phak+'chapter-8-flight-instruments'),
+      'METEOROLOGÍA':('FAA: PHAK, capítulo 12 Weather Theory',
+                     phak+'chapter-12-weather-theory'),
+    }
+    cap=capitulos.get(caso.get('categoria'))
+    if cap and cap[1] not in {url for _,url in salida}:salida.append(cap)
+    return salida
 
 
 def _descubrir_pdf_faa(session, url, caso):
@@ -303,7 +355,7 @@ def investigar_episodio(caso, carpeta, session):
             if len(documentos)>=5:break
             probar(url,nombre)
     informe={'tema':caso['titulo'],'consultados':len(vistos),
-             'descartadas':rechazadas,
+             'descartadas':rechazadas,'tokens_busqueda':sorted(_tokens_tema(caso)),
              'fuentes':[{'id':d['id'],'nombre':d['nombre'],'url':d['url'],
                          'coincidencias_tema':d['coincidencias_tema'],
                          'extracto':d['texto'][:900]} for d in documentos]}
