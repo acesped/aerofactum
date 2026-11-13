@@ -47,6 +47,9 @@ jobs:
       GROQ_MODELO: ${{ vars.GROQ_MODELO || 'openai/gpt-oss-120b' }}
       AERO_IA_MIN_FUENTES: ${{ vars.AERO_IA_MIN_FUENTES || '1' }}
       AERO_IA_MIN_DATOS: '3'
+      # Voz pausada y subtítulos anticipados respecto del audio.
+      AERO_VELOCIDAD_VOZ: ${{ vars.AERO_VELOCIDAD_VOZ || '-5%' }}
+      AERO_SUBTITULOS_ADELANTO: ${{ vars.AERO_SUBTITULOS_ADELANTO || '0.28' }}
       AERO_IA_DRY_RUN: ${{ inputs.solo_guion && 'true' || 'false' }}
       YOUTUBE_PRIVACY: ${{ inputs.privacidad || vars.YOUTUBE_PRIVACY || 'private' }}
       ALLOW_UNREVIEWED_PUBLICATION: ${{ vars.ALLOW_UNREVIEWED_PUBLICATION || 'false' }}
