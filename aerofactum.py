@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 3.3 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 3.4 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 Ninguna API de pago. CPU. Sin fotografías inventadas por IA.
@@ -362,6 +362,17 @@ def _consultas_fotos(caso):
     titulo=caso.get('_titulo_caso',caso.get('titulo',''))
     categoria=caso.get('categoria','')
     consultas=list(caso.get('imagenes',[]))
+    # La ficha antigua de meteo_07 buscaba 'satellite map' y el filtro
+    # descarta mapas, correctamente. Buscar FOTOGRAFÍAS atmosféricas reales.
+    if caso.get('_episodio', {}).get('caso_id') == 'meteo_07':
+        consultas = [
+            'cirrus clouds high altitude photograph',
+            'aircraft contrails blue sky',
+            'cirrus clouds sky',
+            'lenticular cloud mountain',
+            'clouds viewed from airplane window',
+            'high altitude clouds aerial photograph',
+        ]
     # Consultas documentales relacionadas con la utilización de aeronaves:
     # rotaciones, escalas y operaciones reales, no diagramas conceptuales.
     if re.search(r'utilizaci[oó]n diaria|horas de utilizaci[oó]n|rotaci[oó]n de aeronaves', titulo, re.I):
@@ -467,6 +478,26 @@ def evaluar_relevancia_foto(caso, titulo, metadata, busqueda):
     """
     titulo_n = _normalizar_texto_foto(titulo.replace('File:', ''))
     titulo_l = titulo_n.strip()
+    # Excepción temática deliberada: el viento en altura se ilustra con
+    # fotografías de cirros, estelas de condensación y atmósfera real.
+    # No todo elemento meteorológico tiene 'aircraft' en el nombre.
+    if (caso.get('_episodio') or {}).get('caso_id') == 'meteo_07':
+        tokens = set(titulo_n.split())
+        contexto = {'cirrus', 'cirrostratus', 'cirrocumulus', 'contrail',
+                    'contrails', 'lenticular', 'lenticularis', 'cloud', 'clouds',
+                    'nubes', 'nube', 'estelas', 'atmosphere', 'atmospheric'}
+        especial = {'cirrus', 'cirrostratus', 'cirrocumulus', 'contrail',
+                    'contrails', 'lenticular', 'lenticularis', 'high',
+                    'altitude', 'upper', 'aerial', 'flight', 'aircraft',
+                    'airplane', 'aviation', 'jet', 'stream'}
+        # 'clouds' solo no es suficiente. Se requieren dos señales
+        # independientes y al menos una específica de altura/aviación.
+        pistas = tokens & contexto
+        detalles = tokens & especial
+        if pistas and detalles and (len(pistas | detalles) >= 2):
+            matches = sorted(pistas | detalles)
+            return 12 + 3 * len(detalles) + len(pistas), matches
+        return 0, []
     if not AVIACION_EN_TITULO.search(titulo_l):
         return 0, []
     metatexto = ' '.join(limpiar_html(metadata.get(k, {}).get('value', ''))
@@ -634,7 +665,9 @@ def buscar_fotos(caso,session,carpeta):
         aviso=(f'No se encontró ninguna FOTOGRAFÍA REAL pertinente y con licencia compatible para «{principal}». '
                'Se excluyeron diagramas, ilustraciones, imágenes generadas por ordenador, mapas y esquemas. '
                'No se producirá el video con imágenes no fotográficas. '
-               'Consulta imagenes_descartadas.json y prueba otro tema o mejora sus términos visuales.')
+               'El filtro acepta sólo CC0/dominio público para no omitir créditos exigidos por otras licencias. '
+               'Consulta imagenes_descartadas.json; prueba con otro tema o amplía el banco de fotografías '
+               'CC0/dominio público, sin relajar la obligación de atribución.')
         (carpeta/'AVISO_SIN_FOTOGRAFIAS.txt').write_text(aviso+'\n',encoding='utf-8')
         raise RuntimeError(aviso)
     if len(fotos)<IMAGENES_MINIMAS:
