@@ -28,5 +28,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=tUz8cyerbH8",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/fin_06_20261113_142529_821842/AEROFACTUM.mp4"
+  },
+  {
+    "episodio": "future_02",
+    "caso": "future_02",
+    "titulo": "Qué limita a un avión eléctrico",
+    "fecha_utc": "2026-11-13T14:51:28.691044+00:00",
+    "youtube_id": "-pJ6KKRS15o",
+    "youtube_url": "https://www.youtube.com/watch?v=-pJ6KKRS15o",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/future_02_20261113_145001_232886/AEROFACTUM.mp4"
   }
 ]
