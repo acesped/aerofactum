@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 4.4 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 4.5 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
@@ -136,6 +136,9 @@ def _tokens_tema(caso):
         'nav_09':{'rnav','area navigation'},
         'nav_10':{'rnp','required navigation performance'},
         'meteo_07':{'upper winds','jet stream','wind aloft','pressure gradient'},
+        'atc_05':{'runway selection','runway in use','active runway',
+                  'runway use','crosswind','tailwind','wind','controller-in-charge',
+                  'runway'},
     }
     return tokens | equivalencias.get(tema_id,set())
 
@@ -262,6 +265,13 @@ def _rutas_documentacion_oficial(caso):
         ('FAA: PHAK, capítulo 8 Flight Instruments',phak+'chapter-8-flight-instruments'),
         ('FAA: Instrument Flying Handbook',
          'https://www.faa.gov/sites/faa.gov/files/pilots/FAA-H-8083-15B.pdf')],
+      'atc_05':[
+        ('FAA JO 7110.65: Runway Selection, sección 3-5',
+         'https://www.faa.gov/air_traffic/publications/atpubs/atc_html/chap3_section_5.html'),
+        ('FAA AIM: Airport Operations, runway assignment',
+         'https://www.faa.gov/air_traffic/publications/aim_html/chap4_section_3.html'),
+        ('FAA JO 7110.65: Use of Active Runways, sección 3-1',
+         'https://www.faa.gov/air_traffic/publications/atpubs/atc_html/chap3_section_1.html')],
     }
     salida=list(rutas.get(tema_id,[]))
     # Fuente de capítulo preferente por categoría. No equivale a fact-check.
@@ -360,6 +370,9 @@ def investigar_episodio(caso, carpeta, session):
             probar(url,nombre)
     informe={'tema':caso['titulo'],'consultados':len(vistos),
              'descartadas':rechazadas,'tokens_busqueda':sorted(_tokens_tema(caso)),
+             'fuentes_oficiales_prioritarias':[
+                 {'nombre':nombre,'url':url}
+                 for url,nombre in consultas_oficiales[:12]],
              'fuentes':[{'id':d['id'],'nombre':d['nombre'],'url':d['url'],
                          'coincidencias_tema':d['coincidencias_tema'],
                          'extracto':d['texto'][:900]} for d in documentos]}
