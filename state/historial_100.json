@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "episodio": "ops_07",
+    "caso": "ops_07",
+    "titulo": "La importancia de la pista contaminada",
+    "fecha_utc": "2026-11-13T12:12:32.572687+00:00",
+    "youtube_id": "8auGbIRRi0Y",
+    "youtube_url": "https://www.youtube.com/watch?v=8auGbIRRi0Y",
+    "youtube_estado": "pendiente: miniatura: <HttpError 403 when requesting https://youtube.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=8auGbIRRi0Y&alt=json&uploadType=media returned \"The authenticated user doesn't have permissions to upload and set custom video thumbnails.\". Details: \"[{'message': \"The authenticated user doesn't have permissions to upload and set custom video thumbnails.\", 'domain': 'youtube.thumbnail', 'reason': 'forbidden', 'location': 'Authorization', 'locationType': 'header'}]\">",
+    "salida": "output/AEROFACTUM/ops_07_20261113_121054_657941/AEROFACTUM.mp4"
+  }
+]
