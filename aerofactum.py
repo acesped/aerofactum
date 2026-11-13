@@ -35,14 +35,17 @@ IMAGENES_MINIMAS_ABSOLUTAS = 1 # mínimo para crear borradores privados; publica
 MAX_IMAGENES = 10
 VERIFICACION_OBLIGATORIA = False # si True, detiene cuando no hay referencias oficiales accesibles
 OUTPUT_BASE = Path(os.getenv('AERO_OUTPUT_DIR', '/content/AEROFACTUM' if Path('/content').exists() else 'output/AEROFACTUM'))
-# Guion investigado: Gemini primero, Groq segundo. Nunca usar plantillas si fallan.
+# Guion investigado: Gemini -> Groq -> OpenRouter. Nunca usar plantillas si fallan.
 AERO_IA_MODO = os.getenv('AERO_IA_MODO', 'auto').strip().lower()
 GEMINI_MODELO = os.getenv('GEMINI_MODELO', 'gemini-3.8-flash')
 GROQ_MODELO = os.getenv('GROQ_MODELO', 'openai/gpt-oss-120b')
+OPENROUTER_MODELO = os.getenv('OPENROUTER_MODELO', 'openrouter/free').strip()
+# La búsqueda web OpenRouter puede generar cargos; habilitar solo con consentimiento explícito.
+AERO_OPENROUTER_WEB_SEARCH = os.getenv('AERO_OPENROUTER_WEB_SEARCH', 'false').strip().lower() == 'true'
 AERO_IA_MIN_FUENTES = max(1, int(os.getenv('AERO_IA_MIN_FUENTES', '1')))
 AERO_IA_MIN_DATOS = max(2, int(os.getenv('AERO_IA_MIN_DATOS', '3')))
 AERO_IA_DRY_RUN = os.getenv('AERO_IA_DRY_RUN', 'false').lower() == 'true'
-AERO_INVESTIGACION_WEB = os.getenv('AERO_INVESTIGACION_WEB', 'auto').strip().lower()  # auto, gemini, groq, ambas, off
+AERO_INVESTIGACION_WEB = os.getenv('AERO_INVESTIGACION_WEB', 'auto').strip().lower()  # auto, gemini, groq, openrouter, ambas, todas, off
 AERO_BUSQUEDA_MAX_URLS = max(3,min(24,int(os.getenv('AERO_BUSQUEDA_MAX_URLS','12'))))
 AERO_IA_URLS = os.getenv('AERO_IA_URLS', '').strip()  # URLs propias, separadas por |, opcionales
 MUSICA_VOLUMEN = 0.065  # más presencia, con limitador final para evitar clipping
@@ -427,20 +430,86 @@ def _descubrir_fuentes_groq(caso):
     return [(url,'Groq browser_search') for url in _enlaces_de_texto_investigado(texto)]
 
 
+def _openrouter_chat(prompt, *, busqueda=False):
+    """OpenRouter Chat Completions. Usa búsqueda web solo con autorización expresa.
+
+    Las URL descubiertas no se consideran evidencia hasta recuperar el documento.
+    """
+    import requests
+    key=os.getenv('OPENROUTER_API_KEY','').strip()
+    if not key:raise RuntimeError('OPENROUTER_API_KEY no configurada')
+    payload={
+        'model':OPENROUTER_MODELO,
+        'messages':[
+            {'role':'system','content':('Eres un investigador aeronáutico que cita fuentes reales.' if busqueda
+                                        else 'Eres un guionista técnico aeronáutico. Devuelve únicamente JSON válido.')},
+            {'role':'user','content':prompt}],
+        'temperature':0.20 if busqueda else 0.55,
+        'max_tokens':2200 if busqueda else 7000,
+        'stream':False,
+    }
+    if busqueda:
+        if not AERO_OPENROUTER_WEB_SEARCH:
+            raise RuntimeError('Búsqueda OpenRouter desactivada por posible costo; configurar AERO_OPENROUTER_WEB_SEARCH=true')
+        payload['tools']=[{'type':'openrouter:web_search','parameters':{'max_uses':1,'max_results':5}}]
+    headers={
+        'Authorization':'Bearer '+key,
+        'Content-Type':'application/json',
+        'HTTP-Referer':'https://acesped.github.io/aerofactum/',
+        'X-Title':'AEROFACTUM',
+    }
+    r=requests.post('https://openrouter.ai/api/v1/chat/completions',
+                    headers=headers,json=payload,timeout=(10,115))
+    if not r.ok:
+        raise RuntimeError(f'OpenRouter HTTP {r.status_code}: {r.text[:350]}')
+    data=r.json()
+    choices=data.get('choices') or []
+    if not choices:raise RuntimeError('OpenRouter no devolvió respuestas')
+    msg=choices[0].get('message') or {}
+    content=msg.get('content') or ''
+    if isinstance(content,list):
+        content='\n'.join(str(x.get('text','')) for x in content if isinstance(x,dict))
+    if not str(content).strip():
+        raise RuntimeError('OpenRouter devolvió contenido vacío')
+    return str(content)
+
+
+def _consultar_openrouter(prompt):
+    return _limpiar_json_ia(_openrouter_chat(prompt))
+
+
+def _descubrir_fuentes_openrouter(caso):
+    texto=_openrouter_chat(_prompt_busqueda_ia(caso),busqueda=True)
+    return [(url,'OpenRouter web search') for url in _enlaces_de_texto_investigado(texto)]
+
+
 def _descubrir_fuentes_ia(caso):
-    """Busca con IA en toda la web pública, con fallbacks sin dependencia exclusiva de FAA."""
+    """Fuentes candidatas descubiertas con motores IA y herramientas de búsqueda."""
     modo=AERO_INVESTIGACION_WEB
-    if modo not in ('auto','gemini','groq','ambas','off'):
-        raise ValueError('AERO_INVESTIGACION_WEB: auto, gemini, groq, ambas u off')
+    if modo not in ('auto','gemini','groq','openrouter','ambas','todas','off'):
+        raise ValueError('AERO_INVESTIGACION_WEB: auto, gemini, groq, openrouter, ambas, todas u off')
     if modo=='off':return [],[]
-    motores=({'auto':['gemini','groq'],'gemini':['gemini'],
-              'groq':['groq'],'ambas':['gemini','groq']}[modo])
+    motores={'auto':['gemini','groq'], 'gemini':['gemini'],
+             'groq':['groq'], 'openrouter':['openrouter'],
+             'ambas':['gemini','groq'],
+             'todas':['gemini','groq','openrouter']}[modo]
+    # En auto, OpenRouter solo participa en la búsqueda si se habilita la
+    # herramienta web potencialmente facturable. Sí participa en guiones gratis.
+    if modo=='auto' and AERO_OPENROUTER_WEB_SEARCH:
+        motores.append('openrouter')
     encontrados=[]; errores=[]
     for motor in motores:
+        if motor=='openrouter' and not AERO_OPENROUTER_WEB_SEARCH:
+            errores.append('OpenRouter búsqueda omitida: herramienta web desactivada para evitar cargos')
+            continue
+        if motor=='openrouter' and not os.getenv('OPENROUTER_API_KEY','').strip():
+            errores.append('OpenRouter búsqueda omitida: clave no configurada')
+            continue
         try:
             print(f'  Buscando fuentes en internet con {motor}...',flush=True)
-            propuestas=(_descubrir_fuentes_gemini(caso) if motor=='gemini'
-                       else _descubrir_fuentes_groq(caso))
+            propuestas=({'gemini':_descubrir_fuentes_gemini,
+                         'groq':_descubrir_fuentes_groq,
+                         'openrouter':_descubrir_fuentes_openrouter}[motor])(caso)
             print(f'  {motor}: {len(propuestas)} enlaces candidatos (sin verificar)',flush=True)
             encontrados.extend(propuestas)
             if modo=='auto' and len(encontrados)>=4:break
@@ -718,9 +787,9 @@ def _validar_guion_ia(datos,documentos,caso):
 
 
 def generar_guion_investigado(caso,episodio,documentos,carpeta):
-    """Sin fallback a plantillas: Gemini -> Groq; si ambos fallan, detener."""
-    if AERO_IA_MODO not in ('auto','gemini','groq'):
-        raise ValueError('AERO_IA_MODO debe ser auto, gemini o groq')
+    """Sin plantillas: Gemini -> Groq -> OpenRouter; si fallan, detener."""
+    if AERO_IA_MODO not in ('auto','gemini','groq','openrouter'):
+        raise ValueError('AERO_IA_MODO debe ser auto, gemini, groq u openrouter')
     fuentes_prompt=[]
     for doc in documentos:
         fuentes_prompt.append({'id':doc['id'],'titulo':doc['nombre'],
@@ -756,14 +825,15 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
        'estructura':{'titulo_youtube':'¿Por qué cambia [concepto central] cuando [condición concreta]?', 'hechos_con_evidencia':[{'fuente_id':'F1','afirmacion':'hecho','cita_textual':'copia exacta de texto_fuente'}],
                      'bloques':[{'tipo':'gancho','texto':'Narración...'}]}}
     prompt='Escribe JSON válido en español siguiendo esta especificación:\n'+json.dumps(instruccion,ensure_ascii=False)
-    motores=['gemini','groq'] if AERO_IA_MODO=='auto' else [AERO_IA_MODO]
+    motores=['gemini','groq','openrouter'] if AERO_IA_MODO=='auto' else [AERO_IA_MODO]
     errores=[]
     for motor in motores:
         prompt_motor=prompt
         for intento in range(1,3):
             try:
                 print(f'  Redactando con IA: {motor} intento {intento}/2',flush=True)
-                datos=_consultar_gemini(prompt_motor) if motor=='gemini' else _consultar_groq(prompt_motor)
+                datos=({'gemini':_consultar_gemini,'groq':_consultar_groq,
+                        'openrouter':_consultar_openrouter}[motor])(prompt_motor)
                 plan=_validar_guion_ia(datos,documentos,caso)
                 titulo_ia=_validar_titulo_youtube(datos,caso)
                 # El CTA permanece como escena final sin subtítulos.
@@ -772,7 +842,8 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                 episodio['titulo']=titulo_ia
                 print('  Título YouTube investigado:',titulo_ia,flush=True)
                 (carpeta/'GUION_IA.json').write_text(json.dumps({
-                    'motor':motor, 'modelo':GEMINI_MODELO if motor=='gemini' else GROQ_MODELO,
+                    'motor':motor, 'modelo':{'gemini':GEMINI_MODELO,'groq':GROQ_MODELO,
+                              'openrouter':OPENROUTER_MODELO}[motor],
                     'fecha_utc':datetime.now(timezone.utc).isoformat(),
                     'fuentes':[{'id':d['id'],'nombre':d['nombre'],'url':d['url']} for d in documentos],
                     'resultado':datos,'verificacion':'Citas textuales localizadas; precisión técnica no certificada automáticamente'
@@ -2429,9 +2500,10 @@ if __name__=='__main__':
     elif '--check-auth' in sys.argv:
         validar_canal_youtube(youtube_servicio())
     elif '--check-ia' in sys.argv:
-        if not (os.getenv('GEMINI_API_KEY') or os.getenv('GROQ_API_KEY')):
-            raise RuntimeError('Falta GEMINI_API_KEY o GROQ_API_KEY en GitHub Secrets.')
+        if not (os.getenv('GEMINI_API_KEY') or os.getenv('GROQ_API_KEY') or os.getenv('OPENROUTER_API_KEY')):
+            raise RuntimeError('Configura GEMINI_API_KEY, GROQ_API_KEY u OPENROUTER_API_KEY en GitHub Secrets.')
         print('Motores configurados:', ', '.join(k for k,e in [
-            ('Gemini',os.getenv('GEMINI_API_KEY')),('Groq',os.getenv('GROQ_API_KEY'))] if e))
+            ('Gemini',os.getenv('GEMINI_API_KEY')),('Groq',os.getenv('GROQ_API_KEY')),
+            ('OpenRouter',os.getenv('OPENROUTER_API_KEY'))] if e))
     else:
         ejecutar()
