@@ -273,13 +273,30 @@ def verificar_fuentes(caso,session,carpeta):
 # ======================= IMÁGENES ABIERTAS ======================
 def limpiar_html(v): return html.unescape(re.sub('<[^>]*>',' ',v or '')).strip()
 def licencia_valida(info):
-    meta=info.get('extmetadata') or {}
-    nombre=limpiar_html(meta.get('LicenseShortName',{}).get('value','')).lower()
-    terminos=limpiar_html(meta.get('UsageTerms',{}).get('value','')).lower()
-    link=limpiar_html(meta.get('LicenseUrl',{}).get('value','')).lower()
-    texto=' '.join([nombre,terminos,link])
-    if any(x in texto for x in ['noncommercial','non-commercial','no derivatives','no-derivatives','cc-by-nc','cc-by-nd','cc by-nc','cc by-nd']):return False
-    return any(x in texto for x in ['public domain','cc0','cc by','cc-by','creativecommons.org/licenses/by/','creativecommons.org/publicdomain','pd-old','pd-us','public-domain'])
+    """Solo CC0 o dominio público para no necesitar créditos en YouTube.
+
+    No considerar meras menciones de «public domain» dentro de advertencias.
+    La etiqueta de licencia de Commons debe identificar explícitamente CC0 o PD.
+    """
+    meta = info.get('extmetadata') or {}
+    nombre = limpiar_html(meta.get('LicenseShortName', {}).get('value', '')).strip().lower()
+    enlace = limpiar_html(meta.get('LicenseUrl', {}).get('value', '')).strip().lower()
+    codigo = limpiar_html(meta.get('License', {}).get('value', '')).strip().lower()
+    # Un CC BY/CC BY-SA requiere crédito aunque Commons permita reutilizarlo.
+    # Incluye también CC BY-NC/ND y licencias ambiguas en la exclusión.
+    if any(term in (nombre + ' ' + enlace + ' ' + codigo)
+           for term in ('by-sa', 'by/', 'by-', 'attribution', 'sharealike',
+                        'noncommercial', 'non-commercial', 'no derivatives')):
+        return False
+    es_cc0 = (nombre in ('cc0', 'cc0 1.0', 'creative commons zero')
+              or 'creativecommons.org/publicdomain/zero/' in enlace
+              or codigo in ('cc0', 'cc-zero'))
+    es_pd = (nombre in ('public domain', 'dominio público', 'public domain mark')
+             or nombre.startswith('pd-')
+             or codigo.startswith('pd-')
+             or codigo in ('pd', 'public domain')
+             or 'creativecommons.org/publicdomain/mark/' in enlace)
+    return es_cc0 or es_pd
 
 # El filtro anterior sólo comprobaba la LICENCIA y permitía fotos de
 # «laboratory equipment» aunque el episodio tratase sobre un magnetar.
@@ -1242,12 +1259,26 @@ def subir_reanudable(solicitud, descripcion):
 
 
 def descripcion_youtube(caso, fuentes, creditos):
-    """Descripción limpia con >= 10 hashtags; atribución requerida sin encabezado antiguo."""
-    categoria = _normalizar_texto_foto(caso.get('categoria','')).strip().replace(' ','')
+    """Descripción sin sección de atribuciones: solo se admiten fotos CC0/PD."""
+    # Evitar omitir por accidente los créditos de un recurso con licencia BY.
+    # Las fotos futuras ya se filtran en licencia_valida(), pero esta
+    # protección también cubre datos guardados por versiones anteriores.
+    for c in creditos:
+        if not licencia_valida({'extmetadata': {
+            'LicenseShortName': {'value': c.get('licencia', '')},
+            'LicenseUrl': {'value': c.get('licencia_url', '')},
+        }}):
+            raise RuntimeError(
+                'No se puede eliminar la atribución de una fotografía ' 
+                'con licencia que la exige: ' + c.get('titulo', c.get('archivo', '?')) +
+                '. Selecciona únicamente fotografías CC0 o de dominio público.'
+            )
+    categoria = _normalizar_texto_foto(caso.get('categoria', '')).strip().replace(' ', '')
     etiquetas = [
-        'AEROFACTUM','Aviacion','Aeronautica','AviacionCivil','IndustriaAeronautica',
-        'Pilotos','Aviones','Aeronaves','SeguridadAerea','CulturaAeronautica',
-        'TecnologiaAeronautica','AprendeAviacion','Aviation','AviationLovers',
+        'AEROFACTUM', 'Aviacion', 'Aeronautica', 'AviacionCivil',
+        'IndustriaAeronautica', 'Pilotos', 'Aviones', 'Aeronaves',
+        'SeguridadAerea', 'CulturaAeronautica', 'TecnologiaAeronautica',
+        'AprendeAviacion', 'Aviation', 'AviationLovers',
     ]
     if categoria:
         etiquetas.append(''.join(t.capitalize() for t in categoria.split()))
@@ -1259,26 +1290,11 @@ def descripcion_youtube(caso, fuentes, creditos):
         '', 'FUENTES DE REFERENCIA:',
     ]
     for f in fuentes:
-        parrafos.append(f"- {f.get('nombre','Fuente')}: {f.get('url','')}")
-    # CC BY y CC BY-SA requieren atribución. Se suprime el encabezado
-    # "FOTOGRAFÍAS Y CRÉDITOS (Wikimedia Commons)" solicitado, pero no
-    # se omiten las atribuciones legalmente necesarias.
-    atribuciones = []
-    for c in creditos:
-        licencia = c.get('licencia','').strip()
-        licnorm = licencia.lower().replace(' ','')
-        if ('cc-by' in licnorm or 'cc by' in licencia.lower() or
-                'attribution' in licencia.lower() or 'sharealike' in licencia.lower()):
-            atribuciones.append(
-                f"{c.get('titulo','Imagen')} — {c.get('autor','Autor no identificado')} "
-                f"({licencia}): {c.get('pagina','')} {c.get('licencia_url','')}"
-            )
-    if atribuciones:
-        parrafos += ['', 'Atribuciones de material con licencia:', *atribuciones]
-    parrafos += ['', ' '.join('#'+h for h in etiquetas)]
+        parrafos.append(f"- {f.get('nombre', 'Fuente')}: {f.get('url', '')}")
+    parrafos += ['', ' '.join('#' + h for h in etiquetas)]
     texto = '\n'.join(parrafos)
     if len(texto) > 4900:
-        raise RuntimeError('Descripción supera 4900 caracteres. Revisar atribuciones obligatorias sin recortarlas.')
+        raise RuntimeError('Descripción supera 4900 caracteres.')
     if sum(1 for x in texto.split() if x.startswith('#')) < 10:
         raise RuntimeError('La descripción requiere al menos diez hashtags.')
     return texto
