@@ -1,3 +1,13 @@
 [
-  {  }
+  {},
+  {
+    "episodio": "ops_06",
+    "caso": "ops_06",
+    "titulo": "¿Por qué la distancia de aterrizaje se duplica con pista mojada y peso extra?",
+    "fecha_utc": "2026-11-13T16:07:03.708866+00:00",
+    "youtube_id": "M-hCNSESNmI",
+    "youtube_url": "https://www.youtube.com/watch?v=M-hCNSESNmI",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/ops_06_20261113_160458_538578/AEROFACTUM.mp4"
+  }
 ]
