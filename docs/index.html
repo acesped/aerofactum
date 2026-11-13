@@ -3,37 +3,216 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1">
-  <title>SISMONAUTA | ETAS Chile</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AEROFACTUM: divulgación aeronáutica basada en conocimientos técnicos, operacionales, financieros y de seguridad aérea.">
+  <title>AEROFACTUM | Ciencia y conocimiento aeronáutico</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #091421;
+      color: #e9f1fa;
+      line-height: 1.7;
+    }
+    header {
+      background: linear-gradient(125deg, #102d4a, #091421);
+      padding: 65px 20px;
+      text-align: center;
+      border-bottom: 1px solid #294c6b;
+    }
+    h1 {
+      font-size: clamp(42px, 8vw, 76px);
+      margin: 0;
+      letter-spacing: 5px;
+      color: #ffffff;
+    }
+    .tagline {
+      color: #87d9ff;
+      font-size: 20px;
+    }
+    main {
+      max-width: 900px;
+      margin: auto;
+      padding: 35px 22px 60px;
+    }
+    h2 { color: #80d4ff; margin-top: 35px; }
+    p, li { color: #d2deeb; }
+    a { color: #84d8ff; }
+    .panel {
+      background: #12273b;
+      border: 1px solid #31516c;
+      border-radius: 14px;
+      padding: 24px;
+      margin: 24px 0;
+    }
+    footer {
+      background: #06101a;
+      border-top: 1px solid #294c6b;
+      text-align: center;
+      padding: 30px 20px;
+      font-size: 14px;
+    }
+    footer a { margin: 0 8px; }
+  </style>
 </head>
 <body>
-  <h1>SISMONAUTA | ETAS Chile</h1>
 
+<header>
+  <h1>AEROFACTUM</h1>
+  <p class="tagline">El conocimiento detrás de cada vuelo.</p>
+  <p>Datos, ciencia, tecnología y operaciones aeronáuticas.</p>
+</header>
+
+<main>
+
+  <section>
+    <h2>¿Qué es AEROFACTUM?</h2>
+    <p>
+      AEROFACTUM es un proyecto de divulgación aeronáutica
+      que produce contenido educativo sobre la industria
+      de la aviación civil.
+    </p>
+    <p>
+      Su objetivo es explicar conceptos técnicos, financieros,
+      operacionales y de seguridad mediante videos narrados,
+      fotografías aeronáuticas, datos y referencias documentales.
+    </p>
+    <p>
+      El contenido está dirigido a pilotos, estudiantes,
+      profesionales de la aviación y personas interesadas
+      en comprender cómo funciona esta industria.
+    </p>
+  </section>
+
+  <section>
+    <h2>¿Qué temas abordamos?</h2>
+    <ul>
+      <li>Aerodinámica y principios de vuelo.</li>
+      <li>Motores, sistemas y componentes de aeronaves.</li>
+      <li>Instrumentos y navegación aérea.</li>
+      <li>Meteorología y planificación de vuelo.</li>
+      <li>Operaciones y procedimientos aeronáuticos.</li>
+      <li>Seguridad operacional y factores humanos.</li>
+      <li>Economía, costos y finanzas de aerolíneas.</li>
+      <li>Aeropuertos y control de tránsito aéreo.</li>
+      <li>Mantenimiento y aeronavegabilidad.</li>
+      <li>Tecnología y futuro de la aviación.</li>
+    </ul>
+  </section>
+
+  <section class="panel">
+    <h2>Integración con YouTube</h2>
+    <p>
+      AEROFACTUM utiliza YouTube Data API v3 y OAuth 2.0
+      de Google para gestionar publicaciones en su canal
+      autorizado de YouTube:
+      <a href="https://www.youtube.com/@aerofactum">
+        @aerofactum
+      </a>.
+    </p>
+    <p>
+      Mediante un proceso automatizado en GitHub Actions,
+      la aplicación puede generar y subir videos educativos,
+      establecer títulos y descripciones, incorporar
+      miniaturas y cargar subtítulos.
+    </p>
+    <p>
+      La automatización se ejecuta con autorización
+      del administrador del canal. AEROFACTUM no solicita
+      contraseñas de Google ni de YouTube.
+    </p>
+    <p>
+      El contenido puede publicarse como privado,
+      no listado o público, según la configuración
+      autorizada por el administrador.
+    </p>
+    <p>
+      Para conocer cómo se utilizan los datos asociados
+      con esta integración, consulta nuestra
+      <a href="privacy.html">Política de privacidad</a>.
+    </p>
+  </section>
+
+  <section>
+    <h2>Fuentes y responsabilidad editorial</h2>
+    <p>
+      AEROFACTUM utiliza documentación aeronáutica
+      de referencia, incluyendo materiales de organismos
+      como FAA, OACI, EASA e IATA, según el tema tratado.
+    </p>
+    <p>
+      Las fotografías utilizadas se obtienen de fuentes
+      como Wikimedia Commons, con revisión de relevancia,
+      licencia y atribución.
+    </p>
+    <p>
+      Los videos tienen finalidad informativa y educativa.
+      No sustituyen manuales de vuelo aprobados,
+      listas de comprobación, regulaciones vigentes,
+      capacitación certificada ni instrucciones
+      operacionales de una autoridad competente.
+    </p>
+  </section>
+
+  <section>
+    <h2>Privacidad y condiciones</h2>
+    <p>
+      El uso de los servicios de Google y YouTube
+      se realiza mediante los permisos OAuth autorizados.
+      Las credenciales se administran mediante mecanismos
+      de almacenamiento de secretos, sin publicarlas
+      en el código fuente.
+    </p>
+    <p>
+      Antes de autorizar cualquier acceso a YouTube,
+      consulta los documentos siguientes:
+    </p>
+    <ul>
+      <li>
+        <a href="privacy.html">Política de privacidad de AEROFACTUM</a>
+      </li>
+      <li>
+        <a href="terms.html">Términos de servicio de AEROFACTUM</a>
+      </li>
+      <li>
+        <a href="https://policies.google.com/privacy">
+          Política de privacidad de Google
+        </a>
+      </li>
+      <li>
+        <a href="https://www.youtube.com/t/terms">
+          Términos de servicio de YouTube
+        </a>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Contacto</h2>
+    <p>
+      Para consultas sobre el proyecto, el consentimiento
+      OAuth o la privacidad:
+      <a href="mailto:ari.cesped@gmail.com">
+        ari.cesped@gmail.com
+      </a>.
+    </p>
+  </section>
+
+</main>
+
+<footer>
+  <p>© 2026 AEROFACTUM</p>
+  <p>El conocimiento detrás de cada vuelo.</p>
   <p>
-    SISMONAUTA es una herramienta de divulgación
-    científica que utiliza datos sísmicos públicos
-    y un modelo estadístico experimental ETAS
-    para generar visualizaciones audiovisuales
-    de actividad sísmica en Chile.
+    <a href="./">Inicio</a>
+    <a href="privacy.html">Privacidad</a>
+    <a href="terms.html">Términos</a>
   </p>
+</footer>
 
-  <p>
-    Los resultados no constituyen pronósticos
-    oficiales, predicciones de terremotos
-    ni alertas sísmicas.
-  </p>
-
-  <p>
-    La integración con TikTok permite compartir
-    contenido audiovisual mediante las funciones
-    autorizadas de la plataforma.
-  </p>
-
-  <nav>
-    <a href="terms.html">Términos y condiciones</a>
-    |
-    <a href="privacy.html">Política de privacidad</a>
-  </nav>
 </body>
 </html>
