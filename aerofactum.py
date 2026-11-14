@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 5.3 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 5.4 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
@@ -63,7 +63,9 @@ AERO_CAMBIAR_TEMA_SI_FALLA = os.getenv('AERO_CAMBIAR_TEMA_SI_FALLA','true').lowe
 AERO_MAX_TEMAS_POR_EJECUCION = max(1,min(100,int(os.getenv('AERO_MAX_TEMAS_POR_EJECUCION','5'))))
 AERO_REINTENTOS_POR_FUENTE = max(0,min(3,int(os.getenv('AERO_REINTENTOS_POR_FUENTE','1'))))
 AERO_IA_MAX_FUENTES_PROMPT = max(1,min(3,int(os.getenv('AERO_IA_MAX_FUENTES_PROMPT','2'))))
-AERO_IA_CARACTERES_FUENTE = max(1400,min(5000,int(os.getenv('AERO_IA_CARACTERES_FUENTE','4200'))))
+AERO_IA_CARACTERES_FUENTE = max(1400,min(5000,int(os.getenv('AERO_IA_CARACTERES_FUENTE','3200'))))
+AERO_IA_TIMEOUT = max(25,min(180,int(os.getenv('AERO_IA_TIMEOUT','75'))))
+AERO_IA_CITAS_PRESELECCIONADAS = max(3,min(15,int(os.getenv('AERO_IA_CITAS_PRESELECCIONADAS','9'))))
 AERO_PERMITIR_CAMBIO_TEMA_EXPLICITO = os.getenv('AERO_PERMITIR_CAMBIO_TEMA_EXPLICITO','false').lower() == 'true'
 AERO_IA_MIN_DATOS = max(AERO_IA_MIN_DATOS,AERO_MIN_HECHOS_VERIFICABLES)
 MUSICA_VOLUMEN = 0.065  # más presencia, con limitador final para evitar clipping
@@ -477,18 +479,22 @@ def _openrouter_chat(prompt, *, busqueda=False):
         'X-Title':'AEROFACTUM',
     }
     r=requests.post('https://openrouter.ai/api/v1/chat/completions',
-                    headers=headers,json=payload,timeout=(10,115))
+                    headers=headers,json=payload,timeout=(10,AERO_IA_TIMEOUT))
     if not r.ok:
         raise RuntimeError(f'OpenRouter HTTP {r.status_code}: {r.text[:350]}')
     data=r.json()
     choices=data.get('choices') or []
-    if not choices:raise RuntimeError('OpenRouter no devolvió respuestas')
+    if not choices:
+        raise RuntimeError('OpenRouter sin respuestas: '+str(data.get('error') or data.get('provider') or '')[:250])
     msg=choices[0].get('message') or {}
     content=msg.get('content') or ''
     if isinstance(content,list):
         content='\n'.join(str(x.get('text','')) for x in content if isinstance(x,dict))
     if not str(content).strip():
-        raise RuntimeError('OpenRouter devolvió contenido vacío')
+        motivo=choices[0].get('finish_reason')
+        detalle=msg.get('refusal') or msg.get('reasoning_details') or data.get('error') or ''
+        raise RuntimeError('OpenRouter devolvió contenido vacío (finish_reason='+str(motivo)+
+                           ', error='+str(detalle)[:180]+')')
     return str(content)
 
 
@@ -1245,7 +1251,7 @@ def _consultar_gemini(prompt):
              'generationConfig':{'temperature':0.55,'maxOutputTokens':8192,
                                  'responseMimeType':'application/json'}}
     res=requests.post(endpoint,headers={'x-goog-api-key':key,'Content-Type':'application/json'},
-                      json=payload,timeout=(10,115))
+                      json=payload,timeout=(10,AERO_IA_TIMEOUT))
     if not res.ok:raise RuntimeError(f'Gemini HTTP {res.status_code}: '+res.text[:350])
     data=res.json()
     candidatos=data.get('candidates') or []
@@ -1266,7 +1272,7 @@ def _consultar_groq(prompt):
         'response_format':{'type':'json_object'}}
     res=requests.post('https://api.groq.com/openai/v1/chat/completions',
             headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},
-            json=payload,timeout=(10,115))
+            json=payload,timeout=(10,AERO_IA_TIMEOUT))
     if not res.ok:raise RuntimeError(f'Groq HTTP {res.status_code}: '+res.text[:350])
     respuesta=res.json()['choices'][0]['message']['content']
     return _limpiar_json_ia(respuesta)
@@ -1307,6 +1313,59 @@ def _validar_titulo_youtube(datos, caso):
     if palabras_clave and not any(w in normal for w in palabras_clave):
         raise ValueError('Título no menciona ningún concepto identificable del tema; mantén un término técnico central.')
     return titulo
+
+
+def _aero_citas_preseleccionadas(documentos,caso):
+    """Extrae fragmentos literales de documentos; NO genera ni infiere evidencia.
+
+    El modelo puede referirse a C1, C2, etc. y el programa sustituye la
+    referencia por el texto REAL de la fuente. Una cita no prueba por sí sola
+    que la afirmación sea verdadera: el guion sigue sujeto a revisión.
+    """
+    import unicodedata
+    anclas=_aero_anclas_especificas(caso)
+    candidatas=[]
+    for doc in documentos[:AERO_IA_MAX_FUENTES_PROMPT]:
+        texto=str(doc.get('texto') or '')[:AERO_IA_CARACTERES_FUENTE]
+        # El texto ya fue recuperado de una fuente y seleccionado por relevancia.
+        # Cortar al final de oración o en límites de bloque, nunca fabricar citas.
+        trozos=re.split(r'(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ0-9])|\n{2,}',texto)
+        vistos=set()
+        for trozo in trozos:
+            q=re.sub(r'\s+',' ',trozo).strip()
+            if len(q)<65:continue
+            if len(q)>250:
+                # No recortar fragmentos en mitad de una frase: omitirlos.
+                continue
+            if q.casefold() in vistos:continue
+            vistos.add(q.casefold())
+            qnorm=''.join(c for c in unicodedata.normalize('NFKD',q.casefold()) if not unicodedata.combining(c))
+            valor=sum(3 for palabra in anclas if palabra in qnorm)
+            valor+=sum(1 for word in ('aircraft','flight','pilot','aviation','engine','navigation','weather') if word in qnorm)
+            candidatas.append((valor,doc['id'],q))
+    candidatas.sort(key=lambda x:-x[0])
+    resultado=[];por_fuente={}
+    for score,sid,q in candidatas:
+        if por_fuente.get(sid,0)>=5:continue
+        if not score:continue
+        resultado.append({'cita_id':'C'+str(len(resultado)+1),'fuente_id':sid,'cita_textual':q})
+        por_fuente[sid]=por_fuente.get(sid,0)+1
+        if len(resultado)>=AERO_IA_CITAS_PRESELECCIONADAS:break
+    return resultado
+
+
+def _aero_resolver_citas_ia(datos,citas):
+    """Resuelve IDs exclusivamente contra pasajes literales recuperados."""
+    if not isinstance(datos,dict):return datos
+    indice={c['cita_id']:c for c in citas}
+    for hecho in datos.get('hechos_con_evidencia',[]) or []:
+        if not isinstance(hecho,dict):continue
+        cid=str(hecho.get('cita_id') or '').strip().upper()
+        if cid in indice:
+            original=indice[cid]
+            hecho['fuente_id']=original['fuente_id']
+            hecho['cita_textual']=original['cita_textual']
+    return datos
 
 
 def _validar_guion_ia(datos,documentos,caso):
@@ -1367,7 +1426,7 @@ def _aero_error_proveedor(motor,mensaje):
     """Solo inhabilita fallos de proveedor, NO rechazos editoriales del guion."""
     t=mensaje.lower()
     permanentes=('http 429','http 401','http 403','http 404','no configurada',
-                 'rate limit','quota','devolvió contenido vacío','devolvio contenido vacio')
+                 'rate limit','quota')
     temporales=('http 503','http 500','timed out','read timed out','timeout',
                'connectionerror','connection aborted')
     if any(x in t for x in permanentes+temporales):
@@ -1384,6 +1443,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
     for doc in documentos[:AERO_IA_MAX_FUENTES_PROMPT]:
         fuentes_prompt.append({'id':doc['id'],'titulo':doc['nombre'],
               'url':doc['url'],'texto_fuente':doc['texto'][:AERO_IA_CARACTERES_FUENTE]})
+    citas_preseleccionadas=_aero_citas_preseleccionadas(documentos,caso)
     historial_textos=[]
     try:
         for item in leer_historial(ruta_historial())[-8:]:
@@ -1396,13 +1456,14 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
        'titulos_previos_para_no_repetir':historial_textos,
        'objetivo_titulo':'Título humano atractivo y fiel a los hechos; distinto del nombre técnico de catálogo.',
        'fuentes_documentales':fuentes_prompt,
+       'citas_verificadas_para_elegir':citas_preseleccionadas,
        'normas':[ 'Devuelve un objeto JSON, sin markdown ni texto externo.',
          'Incluye titulo_youtube: título en español de 32 a 95 caracteres, conectado con el tema y con un término central reconocible.',
          'El título debe plantear curiosidad real: una consecuencia, pregunta, contraste o decisión aeronáutica concreta basada en las fuentes.',
          'Evita títulos genéricos tipo «Qué es ...», grandilocuencia, falsas primicias, promesas vacías y cifras no documentadas.',
          'Usa EXCLUSIVAMENTE hechos sustentables en las fuentes incluidas; no inventes cifras, fechas, citas o normativa.',
          'Si las fuentes hablan de algo tangencial, delimita con honestidad el alcance; no extrapoles.',
-         'Incluye entre 3 y 6 hechos_con_evidencia: {fuente_id, afirmacion, cita_textual}; cita_textual debe copiar literalmente 28 a 240 caracteres consecutivos de texto_fuente.',
+         'Incluye entre 3 y 6 hechos_con_evidencia: {fuente_id, afirmacion, cita_id}. Elige cita_id C1, C2, etc. SOLO de citas_verificadas_para_elegir; puedes utilizar cita_textual exacta solo cuando aparezca literalmente en texto_fuente. No reformules las citas.',
          'Escribe ocho bloques en orden EXACTO: gancho,pregunta,contexto,pista,analisis,evidencia,aplicacion,conclusion.',
          'Cada bloque: {tipo,texto}; intenta 35 a 55 palabras, máximo 105. Total de ocho bloques entre 235 y 490 palabras.',
          'Debes aportar al menos tres aprendizajes específicos y un ejemplo explicado sin inventar incidentes.',
@@ -1412,7 +1473,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
          'No incluyas advertencias tipo "este contenido es educativo".',
          'Evita escribir "un estudio indica" si no hay informe explícito en las fuentes.',
          'El resultado no debe depender de referencias numéricas que no figuren en el texto recuperado.' ],
-       'estructura':{'titulo_youtube':'¿Por qué cambia [concepto central] cuando [condición concreta]?', 'hechos_con_evidencia':[{'fuente_id':'F1','afirmacion':'hecho','cita_textual':'copia exacta de texto_fuente'}],
+       'estructura':{'titulo_youtube':'¿Por qué cambia [concepto central] cuando [condición concreta]?', 'hechos_con_evidencia':[{'fuente_id':'F1','afirmacion':'hecho basado en la cita','cita_id':'C1'}],
                      'bloques':[{'tipo':'gancho','texto':'Narración...'}]}}
     prompt='Escribe JSON válido en español siguiendo esta especificación:\n'+json.dumps(instruccion,ensure_ascii=False)
     motores=_aero_motores_guion()
@@ -1426,6 +1487,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                 print(f'  Redactando con IA: {motor} intento {intento}/2',flush=True)
                 datos=({'gemini':_consultar_gemini,'groq':_consultar_groq,
                         'openrouter':_consultar_openrouter}[motor])(prompt_motor)
+                datos=_aero_resolver_citas_ia(datos,citas_preseleccionadas)
                 plan=_validar_guion_ia(datos,documentos,caso)
                 try:
                     titulo_ia=_validar_titulo_youtube(datos,caso)
@@ -1458,6 +1520,12 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                 mensaje=str(e)[:550]
                 errores.append(motor+f' intento {intento}: '+mensaje)
                 print('  Motor IA no disponible/guion rechazado:',motor,mensaje[:240],flush=True)
+                # Un cuerpo vacío puede ser transitorio en openrouter/free: se reintenta
+                # una sola vez, sin abandonar todo el proveedor al primer fallo.
+                if motor=='openrouter' and 'contenido vacío' in mensaje.lower() and intento==2:
+                    _AERO_IA_INHABILITADOS[motor]=mensaje[:350]
+                    print('  OpenRouter: dos respuestas vacías, suspendido para esta ejecución.',flush=True)
+                    break
                 # No insistir ante cuotas, autenticación, modelos retirados o errores de red.
                 if _aero_error_proveedor(motor,mensaje):
                     break
@@ -3219,7 +3287,16 @@ def prueba_interna():
         raise AssertionError('Título sobre videos de FAA debería rechazarse')
     except ValueError:
         pass
-    print('OK: 100 temas, Lorenzo, NM, fuentes, fotos de rodaje y títulos orientados al tema')
+    doc={'id':'F1','texto':('The aircraft altimeter measures altitude using atmospheric pressure. '
+          'Pilots must set the altimeter using the published pressure reference. ')*5}
+    nav=dict(CASOS['nav_02'],_episodio={'caso_id':'nav_02'})
+    citas=_aero_citas_preseleccionadas([doc],nav)
+    assert citas and citas[0]['cita_id']=='C1'
+    datos={'hechos_con_evidencia':[{'cita_id':'C1','afirmacion':'El altímetro indica altitud según presión atmosférica.'}]}
+    _aero_resolver_citas_ia(datos,citas)
+    assert datos['hechos_con_evidencia'][0]['cita_textual']==citas[0]['cita_textual']
+    assert datos['hechos_con_evidencia'][0]['fuente_id']=='F1'
+    print('OK: 100 temas, Lorenzo, NM, fuentes, citas literales, fotos y títulos')
 
 if __name__=='__main__':
     if '--self-test' in sys.argv:
