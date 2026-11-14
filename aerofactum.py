@@ -533,6 +533,9 @@ def _descubrir_fuentes_rss(session, caso):
     consultas=[caso.get('titulo','') + ' aviation',
                ' '.join((caso.get('imagenes') or [])[:1]) + ' aviation safety']
     tema_id=caso.get('_episodio',{}).get('caso_id',caso.get('id',''))
+    if tema_id=='future_03':
+        consultas=['hydrogen aircraft fuel cells cryogenic storage EASA Airbus NASA',
+                   'hydrogen aviation airport refuelling certification technical']
     if tema_id=='safe_10':
         consultas=['go around rejected landing aviation safety EASA FAA',
                    'go around stabilised approach flight safety']
@@ -564,9 +567,30 @@ def _descubrir_fuentes_rss(session, caso):
 AERO_FUENTES_DOMINIOS_PREFERENTES = (
     'iata.org', 'icao.int', 'faa.gov', 'easa.europa.eu', 'nasa.gov',
     'eurocontrol.int', 'bts.gov', 'transtats.bts.gov', 'ntsb.gov',
-    'airlines.org', 'airbus.com', 'boeing.com', 'skybrary.aero',
+    'airlines.org', 'airbus.com', 'boeing.com', 'skybrary.aero', 'ntrs.nasa.gov',
     'caa.co.uk', 'atsb.gov.au', 'mit.edu'
 )
+
+# Fuentes primarias comprobadas para tecnologías aeronáuticas específicas.
+# Las URL son candidatas; su contenido debe descargarse y pasar la validación.
+FUENTES_DIRECTAS_TECNOLOGIA = {
+    'future_03': [
+        ('EASA: Hydrogen-powered Aircraft — tecnología y ensayos',
+         'https://www.easa.europa.eu/en/domains/environment/eaer/technology-and-design/low-carbon-emissions-aircraft/hydrogen-powered'),
+        ('Airbus: Hydrogen — almacenamiento y aviación comercial',
+         'https://www.airbus.com/en/innovation/energy-transition/hydrogen'),
+        ('Airbus: ZEROe — propulsión con hidrógeno',
+         'https://www.airbus.com/en/innovation/energy-transition/hydrogen/zeroe-our-hydrogen-powered-aircraft'),
+        ('EASA: Hydrogen and its potential in aviation',
+         'https://www.easa.europa.eu/en/light/topics/hydrogen-and-its-potential-aviation'),
+        ('Airbus: Hydrogen Hubs at Airports',
+         'https://www.airbus.com/en/innovation/energy-transition/hydrogen/hydrogen-hubs-at-airports'),
+        ('NASA NTRS: Hydrogen-electric aircraft research (CHEETA)',
+         'https://ntrs.nasa.gov/citations/20260001562'),
+        ('EASA: Hydrogen aircraft certification workshop',
+         'https://www.easa.europa.eu/en/newsroom-and-events/press-releases/easa-holds-first-international-workshop-certifying-hydrogen'),
+    ],
+}
 
 FUENTES_DIRECTAS_ECONOMIA = {
     'fin_01': [
@@ -635,6 +659,26 @@ def _relevancia_documento(texto, caso):
         especifico=sum(bool(re.search(p,t)) for p in especiales.get(tema,()))
         if not (ambito and econ and especifico):return 0
         return econ + 2*especifico
+    if tema == 'future_03':
+        # Ni una página genérica sobre aviación ni una sobre hidrógeno de
+        # automóviles basta: exigir el concepto + contexto de vuelo + tecnología.
+        hidrogeno = re.search(r'\b(?:hydrogen|hidrogeno|\bh2\b|\blh2\b)\b', t)
+        aviacion = re.search(
+            r'\b(?:aviation|aviacion|aircraft|airplane|aeroplane|'
+            r'aeronautic\w*|aeronave\w*|airports?|aeropuertos?|'
+            r'flight|flights|vuelos?|zeroe)\b', t)
+        tecnicos = (
+            r'fuel cells?', r'pilas? de combustible', r'propulsion',
+            r'cryogenic', r'criogenic', r'liquid hydrogen',
+            r'hidrogeno liquido', r'hydrogen storage',
+            r'storage tanks?', r'almacenamiento', r'refuell?ing',
+            r'combustion', r'certification', r'certificacion',
+            r'hydrogen-powered', r'hydrogen-electric',
+            r'powertrain', r'infrastructure', r'infraestructura',
+            r'distribution', r'distribucion', r'emissions?',
+        )
+        puntos = sum(bool(re.search(x,t)) for x in tecnicos)
+        return puntos + 2 if hidrogeno and aviacion and puntos >= 2 else 0
     # Para temas no financieros conservar las salvaguardas originales por tema.
     tokens=_tokens_tema(caso)
     matches={x for x in tokens if re.search(r'\b'+re.escape(x)+r'\b',t)}
@@ -750,7 +794,9 @@ def investigar_episodio(caso, carpeta, session):
         return False
     # Las fuentes temáticas se prueban ANTES de Bing; nunca confundir un buscador
     # de vuelos o el inicio de una aerolínea con información financiera.
-    oficiales=FUENTES_DIRECTAS_ECONOMIA.get(tema,[])+_rutas_documentacion_oficial(caso)
+    oficiales=(FUENTES_DIRECTAS_TECNOLOGIA.get(tema,[])
+               +FUENTES_DIRECTAS_ECONOMIA.get(tema,[])
+               +_rutas_documentacion_oficial(caso))
     oficiales += [(item[0],item[1]) for item in caso.get('fuentes',[]) if len(item)>=2]
     for nombre,url in oficiales:
         if len(documentos)>=4:break
@@ -778,8 +824,8 @@ def investigar_episodio(caso, carpeta, session):
         for url,nombre in rss[:8]:
             if len(documentos)>=AERO_IA_MIN_FUENTES:break
             dominio=(urlparse(url).hostname or '').lower()
-            if _es_financiero(caso) and not any(dominio==d or dominio.endswith('.'+d) for d in AERO_FUENTES_DOMINIOS_PREFERENTES):
-                rechazadas.append(url+' [dominio no técnico]');continue
+            if not any(dominio==d or dominio.endswith('.'+d) for d in AERO_FUENTES_DOMINIOS_PREFERENTES):
+                rechazadas.append(url+' [RSS: dominio sin respaldo técnico]');continue
             incluir(url,nombre)
     informe={'tema':caso['titulo'],'fecha_utc':datetime.now(timezone.utc).isoformat(),
              'modo_investigacion':AERO_INVESTIGACION_WEB,
