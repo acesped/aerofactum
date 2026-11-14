@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 5.0 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 5.1 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
@@ -55,12 +55,15 @@ AERO_INDEXAR_PDF = os.getenv('AERO_INDEXAR_PDF','true').lower() == 'true'
 AERO_CACHE_DOCUMENTAL = os.getenv('AERO_CACHE_DOCUMENTAL','true').lower() == 'true'
 AERO_CACHE_DIR = Path(os.getenv('AERO_CACHE_DIR','state/aero_documentos'))
 AERO_CACHE_DIAS = max(1,int(os.getenv('AERO_CACHE_DIAS','45')))
+AERO_CACHE_VERSION = 2  # invalida textos anteriores mal clasificados
 AERO_MAX_DOCUMENTOS = max(1,min(8,int(os.getenv('AERO_MAX_DOCUMENTOS','4'))))
 AERO_MIN_FUENTES = max(1,int(os.getenv('AERO_MIN_FUENTES',str(AERO_IA_MIN_FUENTES))))
 AERO_MIN_HECHOS_VERIFICABLES = max(2,int(os.getenv('AERO_MIN_HECHOS_VERIFICABLES',str(AERO_IA_MIN_DATOS))))
 AERO_CAMBIAR_TEMA_SI_FALLA = os.getenv('AERO_CAMBIAR_TEMA_SI_FALLA','true').lower() == 'true'
 AERO_MAX_TEMAS_POR_EJECUCION = max(1,min(100,int(os.getenv('AERO_MAX_TEMAS_POR_EJECUCION','5'))))
 AERO_REINTENTOS_POR_FUENTE = max(0,min(3,int(os.getenv('AERO_REINTENTOS_POR_FUENTE','1'))))
+AERO_IA_MAX_FUENTES_PROMPT = max(1,min(3,int(os.getenv('AERO_IA_MAX_FUENTES_PROMPT','2'))))
+AERO_IA_CARACTERES_FUENTE = max(1400,min(5000,int(os.getenv('AERO_IA_CARACTERES_FUENTE','3500'))))
 AERO_PERMITIR_CAMBIO_TEMA_EXPLICITO = os.getenv('AERO_PERMITIR_CAMBIO_TEMA_EXPLICITO','false').lower() == 'true'
 AERO_IA_MIN_DATOS = max(AERO_IA_MIN_DATOS,AERO_MIN_HECHOS_VERIFICABLES)
 MUSICA_VOLUMEN = 0.065  # más presencia, con limitador final para evitar clipping
@@ -784,7 +787,7 @@ def _leer_documento_web(session,url,caso,origen):
         return None
 
 
-# ==================== AEROFACTUM 5.0: INVESTIGACIÓN UNIVERSAL ====================
+# ==================== AEROFACTUM 5.1: INVESTIGACIÓN UNIVERSAL ====================
 # No hay dependencias adicionales respecto de la versión 4.9.
 # El cache almacena respuestas DOCUMENTALES, nunca conclusiones de IA.
 
@@ -851,42 +854,74 @@ def _aero_consultas(caso):
       f'{primero} aircraft systems aviation',
     ]))
 
+# Vocabulario genérico que NO sirve por sí solo como prueba documental.
+_AERO_STOP_TEMATICO = set('aircraft airplane airliner aeroplane aviation airport airports flight flights pilots pilot system systems aviation safety airplane engine engines maintenance technical technology photograph photo aircrafts and with from into about ground aviation general commercial control international information aircraft airplane'.split())
+_AERO_TERMINOS_POR_TEMA = {
+ 'mnt_02':('inspection','inspections','maintenance inspection','aircraft inspection','airworthiness inspection','inspeccion','inspecciones'),
+ 'motor_02':('compressor','compressors','compressor stage','axial compressor','centrifugal compressor','compresor'),
+ 'motor_08':('aircraft electrical','electrical power','electrical system','aircraft generator','power distribution','electrical bus','busbar','alternator','sistema electrico'),
+ 'meteo_04':('icing','ice accretion','airframe icing','aircraft icing','ice protection','engelamiento','hielo','de-icing','anti-icing'),
+ 'meteo_09':('fog','visibility','rvr','runway visual range','low visibility','niebla','visibilidad'),
+ 'motor_07': AERO_CONCEPTOS['motor_07'],
+ 'future_03': AERO_CONCEPTOS['future_03'],
+}
+
+def _aero_anclas_especificas(caso):
+    """Construye anclas por episodio; no confunde grupos con evidencia."""
+    tema=_tema_id_actual(caso)
+    if tema in _AERO_TERMINOS_POR_TEMA:
+        return tuple(_aero_norm(x) for x in _AERO_TERMINOS_POR_TEMA[tema])
+    # En otras fichas, los términos descriptivos ingleses del catálogo actúan
+    # como palabras clave específicas; los sustantivos de dominio no cuentan.
+    base=' '.join((caso.get('imagenes') or [])[:1])
+    palabras=[x for x in re.findall(r'[a-z]{4,}',_aero_norm(base))
+              if x not in _AERO_STOP_TEMATICO and x not in {'civil','closeup','interior','aerial','real'}]
+    return tuple(dict.fromkeys(palabras))
+
 def _aero_documento_relevante(texto,caso):
-    """Evalúa ventanas locales, no portada/menú de una web completa."""
+    """Exige evidencia del EPISODIO y no solo de su categoría.
+
+    Se usa tanto con textos nuevos como con la caché. Las coincidencias
+    léxicas no sustituyen la revisión factual de cada afirmación.
+    """
     t=_aero_norm(texto)
     tema=_tema_id_actual(caso)
-    grupo=_aero_tema_grupo(caso)
-    # Protecciones específicas de la lógica previa.
+    if len(t)<180:return 0
     if tema=='future_03':return _relevancia_documento(texto,caso)
-    if tema=='motor_07':
-        claves=AERO_CONCEPTOS[tema]
-        hits=sum(k in t for k in claves)
-        ambito=any(k in t for k in ('aircraft','flight','aviation','airplane','aeronave','pilot','cabin'))
-        return hits*3 if hits>=2 and ambito else 0
-    original=_relevancia_documento(texto,caso)
-    grupos=AERO_VOCABULARIO.get(grupo)
-    if not grupos:return original
-    g1=sum(x in t for x in grupos[0]);g2=sum(x in t for x in grupos[1])
-    if not(g1 and g2):return 0
-    return original+g1+g2
+    anclas=_aero_anclas_especificas(caso)
+    hits=[x for x in anclas if re.search(r'(?<![a-z])'+re.escape(x)+r'(?![a-z])',t)]
+    if not hits:return 0
+    # Documentos de meteorología no deben acreditar mantenimiento ni sistemas.
+    grupos=AERO_VOCABULARIO.get(_aero_tema_grupo(caso),())
+    contexto=sum(bool(re.search(r'(?<![a-z])'+re.escape(x)+r'(?![a-z])',t)) for x in (grupos[1] if grupos else ()))
+    if contexto==0 and not (tema.startswith('meteo_') and ('weather' in t or 'meteorolog' in t)):
+        return 0
+    if tema=='motor_07' and len(hits)<2:return 0
+    if tema=='motor_08' and not any(x in t for x in ('electrical','electric','generator','alternator','power distribution','sistema electrico')):
+        return 0
+    if tema=='mnt_02' and not any(x in t for x in ('inspection','inspeccion')):return 0
+    if tema=='meteo_04' and not any(x in t for x in ('icing','ice accretion','ice protection','de-icing','anti-icing','engelamiento')):return 0
+    # Evitar aceptar páginas índice con un enlace a cada tema: se comprueban
+    # pasajes contiguos más abajo en _aero_fragmentos.
+    return 3*len(hits)+contexto
 
 def _aero_fragmentos(texto,caso,limite=16500):
-    """Extrae tramos contiguos con evidencia, manteniendo citas textuales."""
-    if len(texto)<=limite:return texto
-    ventana=2700;paso=2200;seleccion=[]
+    """Selecciona pasajes técnicos, evitando validar por la portada entera."""
+    texto=re.sub(r'\s+',' ',str(texto or '')).strip()
+    ventana=2600;paso=1900;seleccion=[]
+    if len(texto)<=ventana:
+        return texto if _aero_documento_relevante(texto,caso)>0 else ''
     for i in range(0,len(texto),paso):
         parte=texto[i:i+ventana]
         if len(parte)<350:continue
-        puntuacion=_aero_documento_relevante(parte,caso)
-        if puntuacion:seleccion.append((puntuacion,i,parte))
+        score=_aero_documento_relevante(parte,caso)
+        if score:seleccion.append((score,i,parte))
     seleccion.sort(key=lambda x:(-x[0],x[1]))
-    # Preferir secciones separadas para aportar hechos distintos.
     elegidos=[]
-    for sc,i,parte in seleccion:
-        if all(abs(i-j)>1200 for j in elegidos):
-            elegidos.append(i)
+    for _,i,parte in seleccion:
+        if all(abs(i-j)>=1200 for j in elegidos):elegidos.append(i)
         if len(elegidos)>=5:break
-    if not elegidos:return texto[:limite]
+    if not elegidos:return ''
     return ' '.join(texto[i:i+ventana] for i in sorted(elegidos))[:limite]
 
 def _aero_cache_archivo(url):
@@ -898,6 +933,7 @@ def _aero_cache_leer(url,caso):
         p=_aero_cache_archivo(url)
         if not p.is_file():return None
         v=json.loads(p.read_text(encoding='utf-8'))
+        if v.get('version')!=AERO_CACHE_VERSION:return None
         if time.time()-v.get('timestamp',0)>AERO_CACHE_DIAS*86400:return None
         texto=v['texto']
         fragmento=_aero_fragmentos(texto,caso)
@@ -912,7 +948,7 @@ def _aero_cache_guardar(url,nombre,texto):
     if not AERO_CACHE_DOCUMENTAL or len(texto)<450:return
     try:
         p=_aero_cache_archivo(url);p.parent.mkdir(parents=True,exist_ok=True)
-        payload={'url':url,'nombre':nombre,'texto':texto[:220000],
+        payload={'version':AERO_CACHE_VERSION,'url':url,'nombre':nombre,'texto':texto[:220000],
                  'timestamp':time.time(),'fecha_consulta':datetime.now(timezone.utc).isoformat()}
         temporal=p.with_suffix('.tmp')
         temporal.write_text(json.dumps(payload,ensure_ascii=False),encoding='utf-8')
@@ -1248,14 +1284,35 @@ def _validar_guion_ia(datos,documentos,caso):
     return [(b['tipo'],re.sub(r'\s+',' ',b['texto']).strip()) for b in bloques]
 
 
+# Circuit breaker de disponibilidad por ejecución. No modifica cuotas ni oculta errores.
+_AERO_IA_INHABILITADOS = {}
+
+def _aero_motores_guion():
+    opciones=['gemini','groq','openrouter'] if AERO_IA_MODO=='auto' else [AERO_IA_MODO]
+    variables={'gemini':'GEMINI_API_KEY','groq':'GROQ_API_KEY','openrouter':'OPENROUTER_API_KEY'}
+    return [m for m in opciones if os.getenv(variables[m],'').strip() and m not in _AERO_IA_INHABILITADOS]
+
+def _aero_error_proveedor(motor,mensaje):
+    """Solo inhabilita fallos de proveedor, NO rechazos editoriales del guion."""
+    t=mensaje.lower()
+    permanentes=('http 429','http 401','http 403','http 404','no configurada',
+                 'rate limit','quota','devolvió contenido vacío','devolvio contenido vacio')
+    temporales=('http 503','http 500','timed out','read timed out','timeout',
+               'connectionerror','connection aborted')
+    if any(x in t for x in permanentes+temporales):
+        _AERO_IA_INHABILITADOS[motor]=mensaje[:350]
+        print(f'  {motor}: deshabilitado para el resto de la ejecución por fallo de proveedor.',flush=True)
+        return True
+    return False
+
 def generar_guion_investigado(caso,episodio,documentos,carpeta):
     """Sin plantillas: Gemini -> Groq -> OpenRouter; si fallan, detener."""
     if AERO_IA_MODO not in ('auto','gemini','groq','openrouter'):
         raise ValueError('AERO_IA_MODO debe ser auto, gemini, groq u openrouter')
     fuentes_prompt=[]
-    for doc in documentos:
+    for doc in documentos[:AERO_IA_MAX_FUENTES_PROMPT]:
         fuentes_prompt.append({'id':doc['id'],'titulo':doc['nombre'],
-              'url':doc['url'],'texto_fuente':doc['texto'][:10000]})
+              'url':doc['url'],'texto_fuente':doc['texto'][:AERO_IA_CARACTERES_FUENTE]})
     historial_textos=[]
     try:
         for item in leer_historial(ruta_historial())[-8:]:
@@ -1287,8 +1344,10 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
        'estructura':{'titulo_youtube':'¿Por qué cambia [concepto central] cuando [condición concreta]?', 'hechos_con_evidencia':[{'fuente_id':'F1','afirmacion':'hecho','cita_textual':'copia exacta de texto_fuente'}],
                      'bloques':[{'tipo':'gancho','texto':'Narración...'}]}}
     prompt='Escribe JSON válido en español siguiendo esta especificación:\n'+json.dumps(instruccion,ensure_ascii=False)
-    motores=['gemini','groq','openrouter'] if AERO_IA_MODO=='auto' else [AERO_IA_MODO]
+    motores=_aero_motores_guion()
     errores=[]
+    if not motores:
+        raise EpisodioRecuperable('No hay proveedores IA de guion disponibles: '+str(_AERO_IA_INHABILITADOS))
     for motor in motores:
         prompt_motor=prompt
         for intento in range(1,3):
@@ -1317,8 +1376,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                 errores.append(motor+f' intento {intento}: '+mensaje)
                 print('  Motor IA no disponible/guion rechazado:',motor,mensaje[:240],flush=True)
                 # No insistir ante cuotas, autenticación, modelos retirados o errores de red.
-                if any(t in mensaje.lower() for t in ('http 429','http 401','http 403','http 404',
-                         'http 503','http 500','no configurada','timeout','connection')):
+                if _aero_error_proveedor(motor,mensaje):
                     break
                 prompt_motor=prompt+'\nIMPORTANTE: La respuesta previa se rechazó por: '+mensaje+                              '. Corrige la estructura y las citas textuales literales.\n'
     (carpeta/'ERROR_GUION_IA.txt').write_text('\n'.join(errores),encoding='utf-8')
@@ -2986,6 +3044,9 @@ def ejecutar():
     resultados=[];fallos=[]
     for episodio_id in cola[:max_intentos]:
         if len(resultados)>=cantidad:break
+        if not _aero_motores_guion():
+            print('  Se suspende la selección de temas: no quedan proveedores IA de guion disponibles.',flush=True)
+            break
         episodio=dict(CATALOGO_AERONAUTICO[episodio_id])
         print(f'\n=== INTENTO {len(resultados)+len(fallos)+1}/{max_intentos} '
               f'· {episodio_id} · videos completados {len(resultados)}/{cantidad} ===',flush=True)
@@ -3003,7 +3064,8 @@ def ejecutar():
     (OUTPUT_BASE/'ULTIMO_INFORME_EJECUCION.json').write_text(json.dumps({
         'fecha_utc':datetime.now(timezone.utc).isoformat(),
         'videos_completados':len(resultados),'videos_solicitados':cantidad,
-        'fallos_preproduccion':fallos,'resultados':[str(r) for r in resultados]
+        'fallos_preproduccion':fallos,'proveedores_ia_inhabilitados':_AERO_IA_INHABILITADOS,
+        'resultados':[str(r) for r in resultados]
     },ensure_ascii=False,indent=2),encoding='utf-8')
     if len(resultados)<cantidad:
         raise RuntimeError(f'Se completaron {len(resultados)}/{cantidad} videos. '
@@ -3027,7 +3089,17 @@ def prueba_interna():
     hid=('Hydrogen aircraft hydrogen propulsion and liquid hydrogen storage '
          'for aviation certification and infrastructure. ')*12
     assert _aero_documento_relevante(hid,caso2)>0
-    print('OK: catálogo, voz Lorenzo, NM y relevancia específica en motor_07/future_03')
+    # Regresión: jamás utilizar una página meteorológica para mantenimiento.
+    inspeccion=dict(CASOS['mnt_02'],_episodio={'caso_id':'mnt_02'})
+    meteorologia=('Aviation aircraft weather icing wind visibility forecasts flight pilot. '*60)
+    assert _aero_documento_relevante(meteorologia,inspeccion)==0
+    mantenimiento=('Aircraft maintenance inspections check structural defects and airworthiness. '*60)
+    assert _aero_documento_relevante(mantenimiento,inspeccion)>0
+    sistema=dict(CASOS['motor_08'],_episodio={'caso_id':'motor_08'})
+    assert _aero_documento_relevante(meteorologia,sistema)==0
+    assert _aero_documento_relevante(('Aircraft electrical power distribution and electrical system generator. '*50),sistema)>0
+    assert not _aero_fragmentos(meteorologia,inspeccion)
+    print('OK: 100 temas, Lorenzo, NM, relevancia temática y prevención de caché contaminada')
 
 if __name__=='__main__':
     if '--self-test' in sys.argv:
