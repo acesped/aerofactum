@@ -29,5 +29,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=Esg93RXe724",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/ops_08_20261114_125243_589360/AEROFACTUM.mp4"
+  },
+  {
+    "episodio": "nav_02",
+    "caso": "nav_02",
+    "titulo": "¿Por qué el altímetro marca presión y no altitud real?",
+    "fecha_utc": "2026-11-14T18:52:04.430753+00:00",
+    "youtube_id": "2QNgMdB-BSY",
+    "youtube_url": "https://www.youtube.com/watch?v=2QNgMdB-BSY",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/nav_02_20261114_184724_906513/AEROFACTUM.mp4"
   }
 ]
