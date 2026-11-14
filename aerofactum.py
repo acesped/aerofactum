@@ -14,14 +14,14 @@ from datetime import datetime, timezone
 
 # ==================== CONFIGURACIÓN EDITABLE ====================
 TEMA = os.getenv('AERO_TEMA', 'aleatorio')       # caso específico o 'aleatorio'; por defecto no repite episodios
-VOZ = 'es-ES-AlvaroNeural'  # voz fija para TODOS los segmentos de narración
+VOZ = 'es-CL-LorenzoNeural'  # voz fija para TODOS los segmentos de narración
 VELOCIDAD = os.getenv('AERO_VELOCIDAD_VOZ', '-5%').strip()  # Lorenzo más pausado; configurable en GitHub Variables
 if not re.fullmatch(r'[+-]?(?:[0-9]|[1-9][0-9]|100)%', VELOCIDAD):
     raise ValueError('AERO_VELOCIDAD_VOZ debe ser porcentaje válido, por ejemplo -5%')
 # Español siempre con Lorenzo; fragmentos terminológicos en inglés con voz nativa.
 VOZ_INGLES = os.getenv('AERO_VOZ_INGLES', 'en-US-AndrewNeural').strip()
 # La pronunciación inglesa se puede desactivar si se prefiere una sola voz.
-PRONUNCIACION_INGLES = False  # voz única Alvaro en TODOS los fragmentos
+PRONUNCIACION_INGLES = False  # voz única Lorenzo en TODOS los fragmentos
 SUBTITULOS_ADELANTO = max(0.0,min(0.65,float(os.getenv('AERO_SUBTITULOS_ADELANTO','0.28'))))  # segundos; antes que la voz
 SALIDA_EN_DRIVE = os.getenv('GITHUB_ACTIONS', '').lower() != 'true'
 CREAR_VISTA_PREVIA = os.getenv('AERO_PREVIEW', 'false').lower() == 'true'      # True = solo miniatura + fotogramas de muestra, sin TTS
@@ -1776,7 +1776,7 @@ def generar_voces(plan,carpeta):
                 for j,frag in enumerate(fragmentos):
                     idioma,literal=frag[:2]
                     texto_tts=frag[2] if len(frag)>2 else literal
-                    voz_actual=VOZ_INGLES if idioma=='en' else VOZ
+                    voz_actual=VOZ  # Lorenzo en todos los fragmentos
                     voces_usadas.append(idioma)
                     audio=bytearray();marcas_fragmento=[];error_tts=None
                     for intento in range(1,5):
