@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 5.2 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 5.3 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
@@ -55,7 +55,7 @@ AERO_INDEXAR_PDF = os.getenv('AERO_INDEXAR_PDF','true').lower() == 'true'
 AERO_CACHE_DOCUMENTAL = os.getenv('AERO_CACHE_DOCUMENTAL','true').lower() == 'true'
 AERO_CACHE_DIR = Path(os.getenv('AERO_CACHE_DIR','state/aero_documentos'))
 AERO_CACHE_DIAS = max(1,int(os.getenv('AERO_CACHE_DIAS','45')))
-AERO_CACHE_VERSION = 2  # invalida textos anteriores mal clasificados
+AERO_CACHE_VERSION = 3  # 5.3: invalida índices y fragmentos mal clasificados
 AERO_MAX_DOCUMENTOS = max(1,min(8,int(os.getenv('AERO_MAX_DOCUMENTOS','4'))))
 AERO_MIN_FUENTES = max(1,int(os.getenv('AERO_MIN_FUENTES',str(AERO_IA_MIN_FUENTES))))
 AERO_MIN_HECHOS_VERIFICABLES = max(2,int(os.getenv('AERO_MIN_HECHOS_VERIFICABLES',str(AERO_IA_MIN_DATOS))))
@@ -63,7 +63,7 @@ AERO_CAMBIAR_TEMA_SI_FALLA = os.getenv('AERO_CAMBIAR_TEMA_SI_FALLA','true').lowe
 AERO_MAX_TEMAS_POR_EJECUCION = max(1,min(100,int(os.getenv('AERO_MAX_TEMAS_POR_EJECUCION','5'))))
 AERO_REINTENTOS_POR_FUENTE = max(0,min(3,int(os.getenv('AERO_REINTENTOS_POR_FUENTE','1'))))
 AERO_IA_MAX_FUENTES_PROMPT = max(1,min(3,int(os.getenv('AERO_IA_MAX_FUENTES_PROMPT','2'))))
-AERO_IA_CARACTERES_FUENTE = max(1400,min(5000,int(os.getenv('AERO_IA_CARACTERES_FUENTE','3500'))))
+AERO_IA_CARACTERES_FUENTE = max(1400,min(5000,int(os.getenv('AERO_IA_CARACTERES_FUENTE','4200'))))
 AERO_PERMITIR_CAMBIO_TEMA_EXPLICITO = os.getenv('AERO_PERMITIR_CAMBIO_TEMA_EXPLICITO','false').lower() == 'true'
 AERO_IA_MIN_DATOS = max(AERO_IA_MIN_DATOS,AERO_MIN_HECHOS_VERIFICABLES)
 MUSICA_VOLUMEN = 0.065  # más presencia, con limitador final para evitar clipping
@@ -463,7 +463,7 @@ def _openrouter_chat(prompt, *, busqueda=False):
                                         else 'Eres un guionista técnico aeronáutico. Devuelve únicamente JSON válido.')},
             {'role':'user','content':prompt}],
         'temperature':0.20 if busqueda else 0.55,
-        'max_tokens':2200 if busqueda else 7000,
+        'max_tokens':2200 if busqueda else 9500,
         'stream':False,
     }
     if busqueda:
@@ -787,7 +787,7 @@ def _leer_documento_web(session,url,caso,origen):
         return None
 
 
-# ==================== AEROFACTUM 5.2: INVESTIGACIÓN UNIVERSAL ====================
+# ==================== AEROFACTUM 5.3: INVESTIGACIÓN UNIVERSAL ====================
 # No hay dependencias adicionales respecto de la versión 4.9.
 # El cache almacena respuestas DOCUMENTALES, nunca conclusiones de IA.
 
@@ -865,6 +865,64 @@ _AERO_TERMINOS_POR_TEMA = {
  'motor_07': AERO_CONCEPTOS['motor_07'],
  'future_03': AERO_CONCEPTOS['future_03'],
 }
+
+# AEROFACTUM 5.3: fuentes primarias directas por tema. No son evidencia
+# automática: se descargan, se examinan y deben superar relevancia contextual.
+AERO_FUENTES_TEMATICAS_EXTRA.update({
+ 'nav_01': [('FAA PHAK: Flight Instruments, capítulo 8 (PDF)',
+             'https://www.faa.gov/sites/faa.gov/files/regulations_policies/handbooks_manuals/aviation/phak/10_phak_ch8.pdf')],
+ 'nav_02': [('FAA PHAK: Altimeter, Flight Instruments (PDF)',
+             'https://www.faa.gov/sites/faa.gov/files/regulations_policies/handbooks_manuals/aviation/phak/10_phak_ch8.pdf')],
+ 'nav_03': [('FAA PHAK: Attitude Indicator, Flight Instruments (PDF)',
+             'https://www.faa.gov/sites/faa.gov/files/regulations_policies/handbooks_manuals/aviation/phak/10_phak_ch8.pdf')],
+ 'nav_04': [('FAA PHAK: Pitot-static, Flight Instruments (PDF)',
+             'https://www.faa.gov/sites/faa.gov/files/regulations_policies/handbooks_manuals/aviation/phak/10_phak_ch8.pdf')],
+ 'nav_07': [('FAA AIP: VOR navigation and RNAV, ENR 4.1',
+             'https://www.faa.gov/air_traffic/publications/atpubs/aip_html/part2_enr_section_4.1.html'),
+            ('FAA PHAK: VOR and navigation, chapter 8 (PDF)',
+             'https://www.faa.gov/sites/faa.gov/files/regulations_policies/handbooks_manuals/aviation/phak/10_phak_ch8.pdf')],
+ 'nav_08': [('FAA AIM: PBN and RNAV',
+             'https://www.faa.gov/air_traffic/publications/aim_html/chap1_section_2.html')],
+ 'nav_09': [('FAA AIM: Performance-Based Navigation / RNAV',
+             'https://www.faa.gov/air_traffic/publications/aim_html/chap1_section_2.html'),
+            ('FAA AIP: Area Navigation, ENR 4.1',
+             'https://www.faa.gov/air_traffic/publications/atpubs/aip_html/part2_enr_section_4.1.html'),
+            ('FAA: RNAV routes and procedures',
+             'https://www.faa.gov/air_traffic/publications/atpubs/pham_html/chap20_section_5.html')],
+ 'nav_10': [('FAA AIM: RNAV/RNP and PBN',
+             'https://www.faa.gov/air_traffic/publications/aim_html/chap1_section_2.html')],
+ 'motor_01': [('FAA AMT Powerplant: turbofan and engine components (PDF)',
+               'https://www.faa.gov/sites/faa.gov/files/03_amtp_ch1.pdf')],
+ 'motor_02': [('FAA AMT Powerplant: engine compressors (PDF)',
+               'https://www.faa.gov/sites/faa.gov/files/03_amtp_ch1.pdf'),
+              ('FAA: Aircraft Engine Operation and Malfunction (PDF)',
+               'https://www.faa.gov/sites/faa.gov/files/aircraft/air_cert/design_approvals/engine_prop/engine_malf_famil.pdf')],
+ 'motor_03': [('FAA AMT Powerplant: turbines and engine operation (PDF)',
+               'https://www.faa.gov/sites/faa.gov/files/03_amtp_ch1.pdf')],
+ 'motor_04': [('FAA AMT Powerplant: Turbofan bypass ratio (PDF)',
+               'https://www.faa.gov/sites/faa.gov/files/03_amtp_ch1.pdf'),
+              ('FAA: Aircraft Engine Operation and Malfunction (PDF)',
+               'https://www.faa.gov/sites/faa.gov/files/aircraft/air_cert/design_approvals/engine_prop/engine_malf_famil.pdf')],
+ 'motor_05': [('FAA AMT Powerplant: turboprop engine (PDF)',
+               'https://www.faa.gov/sites/faa.gov/files/03_amtp_ch1.pdf')],
+})
+
+# Anclas específicas: no aceptar RNAV solo por menciones genéricas a navigation.
+_AERO_TERMINOS_POR_TEMA.update({
+ 'nav_01': ('indicated airspeed','true airspeed','airspeed indicator','calibrated airspeed','ias','tas'),
+ 'nav_02': ('altimeter','barometric altimeter','pressure altitude','altimetro','altimetry','altimeter setting'),
+ 'nav_03': ('attitude indicator','artificial horizon','attitude gyro','horizonte artificial'),
+ 'nav_04': ('pitot-static','pitot static','pitot tube','static port','pitot tube pressure'),
+ 'nav_07': ('vor','vhf omnidirectional','vor station','vor radial','omnidirectional range'),
+ 'nav_08': ('gps','gnss','global positioning system','satellite navigation'),
+ 'nav_09': ('rnav','area navigation','area navigational'),
+ 'nav_10': ('rnp','required navigation performance'),
+ 'motor_01': ('turbofan','fan engine','bypass airflow'),
+ 'motor_02': ('compressor','compressors','axial compressor','compressor stage','centrifugal compressor'),
+ 'motor_03': ('turbine','turbines','turbine blades','gas turbine'),
+ 'motor_04': ('bypass ratio','bypass air','turbofan bypass','high bypass','bypass flow'),
+ 'motor_05': ('turboprop','propeller turbine','reduction gearbox'),
+})
 
 def _aero_anclas_especificas(caso):
     """Construye anclas por episodio; no confunde grupos con evidencia."""
@@ -1161,10 +1219,20 @@ def _limpiar_json_ia(texto):
         texto=re.sub(r'^```(?:json)?\s*','',texto,flags=re.I)
         texto=re.sub(r'\s*```$','',texto)
     try:return json.loads(texto)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as original_error:
         ini=texto.find('{'); fin=texto.rfind('}')
-        if ini<0 or fin<=ini:raise
-        return json.loads(texto[ini:fin+1])
+        if ini>=0 and fin>ini:
+            try:return json.loads(texto[ini:fin+1])
+            except json.JSONDecodeError:pass
+        # Corregir únicamente la sintaxis JSON, nunca inventar citas ni hechos.
+        # El validador posterior sigue comprobando cada cita literalmente.
+        try:
+            from json_repair import repair_json
+            candidato=repair_json(texto,return_objects=True)
+            if isinstance(candidato,dict) and candidato.get('bloques'):
+                return candidato
+        except (ImportError,ValueError,TypeError,KeyError):pass
+        raise ValueError('JSON incompleto o no recuperable: '+str(original_error)[:200])
 
 
 def _consultar_gemini(prompt):
@@ -1359,7 +1427,19 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                 datos=({'gemini':_consultar_gemini,'groq':_consultar_groq,
                         'openrouter':_consultar_openrouter}[motor])(prompt_motor)
                 plan=_validar_guion_ia(datos,documentos,caso)
-                titulo_ia=_validar_titulo_youtube(datos,caso)
+                try:
+                    titulo_ia=_validar_titulo_youtube(datos,caso)
+                except ValueError as titulo_error:
+                    # No desperdiciar un guion ya validado por un título defectuoso.
+                    # Formular una pregunta neutra a partir del catálogo original.
+                    tecnico=caso.get('_titulo_caso',caso['titulo']).strip().rstrip('?')
+                    alternativas=[f'{tecnico}: ¿qué debe comprender un piloto?',
+                                  f'{tecnico}: ¿qué hay detrás de este concepto?',
+                                  f'{tecnico}: la explicación aeronáutica']
+                    titulo_ia=next((t for t in alternativas if 32<=len(t)<=95),None)
+                    if titulo_ia is None:raise titulo_error
+                    print('  Título IA rechazado; usando título técnico neutral:',titulo_ia,flush=True)
+
                 # El CTA permanece como escena final sin subtítulos.
                 plan.append(('cta','Dale Like y Suscríbete a AEROFACTUM para conocer más sobre aviación.'))
                 caso['titulo']=titulo_ia
@@ -1449,7 +1529,7 @@ def elegir_episodios(cantidad,historial):
 
 # ======================== DEPENDENCIAS ========================
 def asegurar_dependencias():
-    faltantes=[paquete for modulo,paquete in [('PIL','Pillow>=10.0'),('requests','requests>=2.31'),('edge_tts','edge-tts>=6.1'),('numpy','numpy>=1.24'),('cairosvg','CairoSVG>=2.7'),('pypdf','pypdf>=4.0'),('bs4','beautifulsoup4>=4.12')] if importlib.util.find_spec(modulo) is None]
+    faltantes=[paquete for modulo,paquete in [('PIL','Pillow>=10.0'),('requests','requests>=2.31'),('edge_tts','edge-tts>=6.1'),('numpy','numpy>=1.24'),('cairosvg','CairoSVG>=2.7'),('pypdf','pypdf>=4.0'),('bs4','beautifulsoup4>=4.12'),('json_repair','json-repair>=0.30')] if importlib.util.find_spec(modulo) is None]
     if faltantes: subprocess.run([sys.executable,'-m','pip','install','-q',*faltantes],check=True)
     if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
         if not shutil.which('apt-get'): raise RuntimeError('Se requiere FFmpeg en el entorno.')
