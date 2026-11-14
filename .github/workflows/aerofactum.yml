@@ -46,6 +46,8 @@ jobs:
       # Búsqueda web de Gemini / Groq sin limitarse a FAA.
       AERO_INVESTIGACION_WEB: ${{ vars.AERO_INVESTIGACION_WEB || 'auto' }}
       AERO_BUSQUEDA_MAX_URLS: ${{ vars.AERO_BUSQUEDA_MAX_URLS || '12' }}
+      # Mínimo de fotos reales distintas para publicación visible; predeterminado 4.
+      AERO_IMAGENES_MINIMAS: ${{ vars.AERO_IMAGENES_MINIMAS || '4' }}
       GEMINI_MODELO: ${{ vars.GEMINI_MODELO || 'gemini-3.8-flash' }}
       GROQ_MODELO: ${{ vars.GROQ_MODELO || 'openai/gpt-oss-120b' }}
       OPENROUTER_MODELO: ${{ vars.OPENROUTER_MODELO || 'openrouter/free' }}
