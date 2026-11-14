@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 4.9 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 5.0 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
@@ -48,6 +48,21 @@ AERO_IA_DRY_RUN = os.getenv('AERO_IA_DRY_RUN', 'false').lower() == 'true'
 AERO_INVESTIGACION_WEB = os.getenv('AERO_INVESTIGACION_WEB', 'auto').strip().lower()  # auto, gemini, groq, openrouter, ambas, todas, off
 AERO_BUSQUEDA_MAX_URLS = max(3,min(24,int(os.getenv('AERO_BUSQUEDA_MAX_URLS','12'))))
 AERO_IA_URLS = os.getenv('AERO_IA_URLS', '').strip()  # URLs propias, separadas por |, opcionales
+# INVESTIGACIÓN UNIVERSAL 5.0 · todo reside en este archivo Python.
+AERO_INVESTIGACION_UNIVERSAL = os.getenv('AERO_INVESTIGACION_UNIVERSAL','true').lower() == 'true'
+AERO_PRIORIZAR_FUENTES_PRIMARIAS = True
+AERO_INDEXAR_PDF = os.getenv('AERO_INDEXAR_PDF','true').lower() == 'true'
+AERO_CACHE_DOCUMENTAL = os.getenv('AERO_CACHE_DOCUMENTAL','true').lower() == 'true'
+AERO_CACHE_DIR = Path(os.getenv('AERO_CACHE_DIR','state/aero_documentos'))
+AERO_CACHE_DIAS = max(1,int(os.getenv('AERO_CACHE_DIAS','45')))
+AERO_MAX_DOCUMENTOS = max(1,min(8,int(os.getenv('AERO_MAX_DOCUMENTOS','4'))))
+AERO_MIN_FUENTES = max(1,int(os.getenv('AERO_MIN_FUENTES',str(AERO_IA_MIN_FUENTES))))
+AERO_MIN_HECHOS_VERIFICABLES = max(2,int(os.getenv('AERO_MIN_HECHOS_VERIFICABLES',str(AERO_IA_MIN_DATOS))))
+AERO_CAMBIAR_TEMA_SI_FALLA = os.getenv('AERO_CAMBIAR_TEMA_SI_FALLA','true').lower() == 'true'
+AERO_MAX_TEMAS_POR_EJECUCION = max(1,min(100,int(os.getenv('AERO_MAX_TEMAS_POR_EJECUCION','5'))))
+AERO_REINTENTOS_POR_FUENTE = max(0,min(3,int(os.getenv('AERO_REINTENTOS_POR_FUENTE','1'))))
+AERO_PERMITIR_CAMBIO_TEMA_EXPLICITO = os.getenv('AERO_PERMITIR_CAMBIO_TEMA_EXPLICITO','false').lower() == 'true'
+AERO_IA_MIN_DATOS = max(AERO_IA_MIN_DATOS,AERO_MIN_HECHOS_VERIFICABLES)
 MUSICA_VOLUMEN = 0.065  # más presencia, con limitador final para evitar clipping
 LIKE_PAGE_URL = 'https://commons.wikimedia.org/wiki/File:Facebook_Like_button.svg'
 LIKE_SVG_URL = 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Facebook_Like_button.svg'
@@ -769,80 +784,340 @@ def _leer_documento_web(session,url,caso,origen):
         return None
 
 
-def investigar_episodio(caso, carpeta, session):
-    """Primero documentación primaria; RSS solo como último recurso.
+# ==================== AEROFACTUM 5.0: INVESTIGACIÓN UNIVERSAL ====================
+# No hay dependencias adicionales respecto de la versión 4.9.
+# El cache almacena respuestas DOCUMENTALES, nunca conclusiones de IA.
 
-    No suplanta cuotas agotadas, no inventa fuentes y no publica sin evidencia.
-    """
-    import xml.etree.ElementTree as ET
-    from urllib.parse import quote
-    carpeta=Path(carpeta);carpeta.mkdir(parents=True,exist_ok=True)
-    documentos=[];vistos=set();rechazadas=[];errores_busqueda=[]
+class EpisodioRecuperable(RuntimeError):
+    """Fallo anterior a la publicación que permite intentar otro tema."""
+
+# Grupos bilingües de términos técnicos; se exigen como CONJUNTOS, no keywords vagas.
+AERO_VOCABULARIO = {
+ 'aero': [('lift','sustentacion','aerodynamic','aerodinamica','airfoil','ala'),('angle of attack','stall','wing','aircraft','drag')],
+ 'motor': [('engine','turbofan','turbine','powerplant','hydraulic','pressure','cabin','apu','landing gear','electrical'),('aircraft','aviation','flight','airplane','aeronave')],
+ 'nav': [('instrument','navigation','airspeed','altimeter','attitude','pitot','transponder','ils','vor','gnss','rnav','rnp'),('flight','aircraft','pilot','aviation','cockpit')],
+ 'meteo': [('wind','weather','meteorology','turbulence','icing','metar','taf','thunderstorm','visibility','dew point'),('aviation','flight','aircraft','airport','pilot')],
+ 'ops': [('takeoff','landing','runway','flight','fuel','checklist','briefing','performance','weight and balance'),('aircraft','pilot','airline','aeropuerto')],
+ 'safe': [('safety','crew','fatigue','risk','human factors','go around','situational awareness','crm','sms'),('aviation','flight','pilot','aircraft','airline')],
+ 'fin': [('airline','air transport','aviation','aircraft','aerolineas'),('operating costs','revenue','fuel costs','profit','cost','lease','yield','load factor')],
+ 'atc': [('air traffic control','airport','runway','tower','taxi','flight dispatch','slot','airspace'),('aircraft','aviation','flight','airline','aeropuerto')],
+ 'mnt': [('maintenance','airworthiness','inspection','corrosion','repair','mel','borescope','certification','engine'),('aircraft','aviation','airplane','aeronave')],
+ 'future': [('sustainable aviation','hydrogen','electric aircraft','composite','supersonic','flight testing','simulator','drone','automation'),('aircraft','aviation','flight','aeronautic')],
+}
+AERO_CONCEPTOS = {
+ 'motor_07': ('cabin pressurization','cabin pressure','pressurized cabin','pressurization',
+              'pressurisation','cabina presurizada','presurizacion','cabin altitude',
+              'outflow valve','differential pressure','hypoxia'),
+ 'future_03': ('hydrogen aircraft','hydrogen aviation','hydrogen-powered','liquid hydrogen',
+               'hydrogen fuel cell','hidrogeno aeronaves','hydrogen propulsion'),
+}
+AERO_CAPITULOS_FAA = {
+ 'aero': ('https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/phak',),
+ 'motor': ('https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/phak',),
+ 'nav': ('https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/phak',),
+ 'meteo': ('https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/phak',),
+ 'ops': ('https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook',),
+}
+AERO_FUENTES_TEMATICAS_EXTRA = {
+ 'motor_07': [
+   ('FAA: PHAK — Aircraft Systems, capítulo 7',
+    'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/phak'),
+   ('FAA: PHAK, capítulo 7 — Aircraft Systems PDF',
+    'https://www.faa.gov/sites/faa.gov/files/09_phak_ch7.pdf'),
+   ('FAA: PHAK, capítulo 11 — Aircraft Performance PDF',
+    'https://www.faa.gov/sites/faa.gov/files/13_phak_ch11.pdf'),
+ ],
+}
+
+def _aero_norm(t):
+    import unicodedata
+    return ''.join(c for c in unicodedata.normalize('NFKD',str(t).lower())
+                   if not unicodedata.combining(c))
+
+def _aero_tema_grupo(caso):
+    return _tema_id_actual(caso).split('_')[0]
+
+def _aero_consultas(caso):
+    """Consultas en inglés basadas en títulos + vocabulario, sin palabras genéricas solas."""
     tema=_tema_id_actual(caso)
-    propuestas=[]
-    def incluir(url,nombre):
+    terminos=AERO_CONCEPTOS.get(tema)
+    primero=(caso.get('imagenes') or [caso['titulo']])[0]
+    principal=terminos[0] if terminos else primero
+    return list(dict.fromkeys([
+      f'{principal} site:faa.gov aviation',
+      f'{principal} site:nasa.gov aircraft',
+      f'{principal} site:easa.europa.eu aviation',
+      f'{principal} aviation technical pdf',
+      f'{primero} aircraft systems aviation',
+    ]))
+
+def _aero_documento_relevante(texto,caso):
+    """Evalúa ventanas locales, no portada/menú de una web completa."""
+    t=_aero_norm(texto)
+    tema=_tema_id_actual(caso)
+    grupo=_aero_tema_grupo(caso)
+    # Protecciones específicas de la lógica previa.
+    if tema=='future_03':return _relevancia_documento(texto,caso)
+    if tema=='motor_07':
+        claves=AERO_CONCEPTOS[tema]
+        hits=sum(k in t for k in claves)
+        ambito=any(k in t for k in ('aircraft','flight','aviation','airplane','aeronave','pilot','cabin'))
+        return hits*3 if hits>=2 and ambito else 0
+    original=_relevancia_documento(texto,caso)
+    grupos=AERO_VOCABULARIO.get(grupo)
+    if not grupos:return original
+    g1=sum(x in t for x in grupos[0]);g2=sum(x in t for x in grupos[1])
+    if not(g1 and g2):return 0
+    return original+g1+g2
+
+def _aero_fragmentos(texto,caso,limite=16500):
+    """Extrae tramos contiguos con evidencia, manteniendo citas textuales."""
+    if len(texto)<=limite:return texto
+    ventana=2700;paso=2200;seleccion=[]
+    for i in range(0,len(texto),paso):
+        parte=texto[i:i+ventana]
+        if len(parte)<350:continue
+        puntuacion=_aero_documento_relevante(parte,caso)
+        if puntuacion:seleccion.append((puntuacion,i,parte))
+    seleccion.sort(key=lambda x:(-x[0],x[1]))
+    # Preferir secciones separadas para aportar hechos distintos.
+    elegidos=[]
+    for sc,i,parte in seleccion:
+        if all(abs(i-j)>1200 for j in elegidos):
+            elegidos.append(i)
+        if len(elegidos)>=5:break
+    if not elegidos:return texto[:limite]
+    return ' '.join(texto[i:i+ventana] for i in sorted(elegidos))[:limite]
+
+def _aero_cache_archivo(url):
+    return AERO_CACHE_DIR/(hashlib.sha256(url.encode('utf-8')).hexdigest()+'.json')
+
+def _aero_cache_leer(url,caso):
+    if not AERO_CACHE_DOCUMENTAL:return None
+    try:
+        p=_aero_cache_archivo(url)
+        if not p.is_file():return None
+        v=json.loads(p.read_text(encoding='utf-8'))
+        if time.time()-v.get('timestamp',0)>AERO_CACHE_DIAS*86400:return None
+        texto=v['texto']
+        fragmento=_aero_fragmentos(texto,caso)
+        puntuacion=_aero_documento_relevante(fragmento,caso)
+        if puntuacion<=0:return None
+        return {'id':'','nombre':v.get('nombre','Biblioteca documental'),
+                'url':v['url'],'fecha_consulta':v['fecha_consulta'],
+                'texto':fragmento,'coincidencias_tema':puntuacion,'cache':True}
+    except (OSError,ValueError,KeyError,TypeError):return None
+
+def _aero_cache_guardar(url,nombre,texto):
+    if not AERO_CACHE_DOCUMENTAL or len(texto)<450:return
+    try:
+        p=_aero_cache_archivo(url);p.parent.mkdir(parents=True,exist_ok=True)
+        payload={'url':url,'nombre':nombre,'texto':texto[:220000],
+                 'timestamp':time.time(),'fecha_consulta':datetime.now(timezone.utc).isoformat()}
+        temporal=p.with_suffix('.tmp')
+        temporal.write_text(json.dumps(payload,ensure_ascii=False),encoding='utf-8')
+        temporal.replace(p)
+    except OSError as exc:print('  Cache no persistible:',str(exc)[:100],flush=True)
+
+def _aero_extraer_pdf_completo(datos,caso):
+    """Inspecciona hasta 180 páginas e indexa las secciones que mencionan el tema."""
+    from io import BytesIO
+    import pypdf
+    lector=pypdf.PdfReader(BytesIO(datos),strict=False)
+    segmentos=[]
+    for i,pagina in enumerate(lector.pages[:min(180,len(lector.pages))]):
+        try:pagina_txt=re.sub(r'\s+',' ',pagina.extract_text() or '').strip()
+        except Exception:continue
+        if len(pagina_txt)<120:continue
+        # Las menciones del índice no bastan: deben existir textos relevantes.
+        for inicio in range(0,len(pagina_txt),2800):
+            frag=pagina_txt[inicio:inicio+3600]
+            score=_aero_documento_relevante(frag,caso)
+            if score>0 and len(frag)>350:
+                segmentos.append((score,i,f'[Página {i+1}] '+frag))
+    segmentos.sort(key=lambda x:(-x[0],x[1]))
+    resultado=[];paginas=set()
+    for score,pg,txt in segmentos:
+        if pg in paginas:continue
+        paginas.add(pg);resultado.append(txt)
+        if len(resultado)>=5:break
+    return ' '.join(resultado)[:16500]
+
+def _aero_descargar_documento(session,url,caso,nombre):
+    """Obtiene y verifica una fuente. Cache solo para textos efectivamente leídos."""
+    from urllib.parse import urlparse
+    url=_url_publica_investigacion(url)
+    if not url:return None
+    cached=_aero_cache_leer(url,caso)
+    if cached:return cached
+    # PDF grande: no descargar contenido arbitrario de dominios no técnicos.
+    try:
+        for intento in range(AERO_REINTENTOS_POR_FUENTE+1):
+            try:
+                with session.get(url,timeout=(7,25),stream=True,allow_redirects=True,
+                      headers={'User-Agent':'AEROFACTUM/5.0 (https://acesped.github.io/aerofactum/; ari.cesped@gmail.com)'}) as r:
+                    if r.status_code in (429,403,404):return None
+                    if r.status_code in (500,502,503,504) and intento<AERO_REINTENTOS_POR_FUENTE:
+                        time.sleep(1+intento);continue
+                    r.raise_for_status()
+                    final=_url_publica_investigacion(r.url)
+                    if not final:return None
+                    mime=r.headers.get('Content-Type','').lower()
+                    es_pdf='pdf' in mime or urlparse(final).path.lower().endswith('.pdf')
+                    maxbytes=24_000_000 if es_pdf else 3_000_000
+                    if int(r.headers.get('Content-Length') or 0)>maxbytes:return None
+                    chunks=bytearray()
+                    for pedazo in r.iter_content(65536):
+                        chunks.extend(pedazo)
+                        if len(chunks)>maxbytes:return None
+                    if es_pdf:
+                        dominio=urlparse(final).hostname or ''
+                        if not any(dominio==d or dominio.endswith('.'+d) for d in AERO_FUENTES_DOMINIOS_PREFERENTES):return None
+                        texto=_aero_extraer_pdf_completo(bytes(chunks),caso)
+                    elif 'html' in mime or 'text/plain' in mime or not mime:
+                        raw=bytes(chunks).decode(r.encoding or 'utf-8','replace')
+                        texto=_limpiar_texto_web(raw,mime)
+                        if _aero_documento_relevante(texto,caso)==0:
+                            from bs4 import BeautifulSoup
+                            sopa=BeautifulSoup(raw,'html.parser')
+                            for tag in sopa(['script','style','nav','footer','header','noscript','svg','form']):tag.decompose()
+                            texto=re.sub(r'\s+',' ',sopa.get_text(' ',strip=True))
+                    else:return None
+                    break
+            except Exception as exc:
+                if intento>=AERO_REINTENTOS_POR_FUENTE:
+                    print('  Documento no disponible:',url[:95],str(exc)[:100],flush=True)
+                    return None
+                time.sleep(1+intento)
+        txt=_aero_fragmentos(texto,caso)
+        score=_aero_documento_relevante(txt,caso)
+        if len(txt)<450 or score==0:
+            print('  Fuente descartada por relevancia:',final[:110],flush=True)
+            return None
+        _aero_cache_guardar(url,nombre,texto)
+        return {'id':'','nombre':nombre[:120],'url':final,
+                'fecha_consulta':datetime.now(timezone.utc).isoformat(),
+                'texto':txt[:16500],'coincidencias_tema':score,'cache':False}
+    except Exception as exc:
+        print('  Error de extracción:',url[:100],type(exc).__name__,str(exc)[:100],flush=True)
+        return None
+
+def _aero_descubrir_en_paginas_oficiales(session,caso,limite=16):
+    """Explora PDFs de manuales y prioriza enlaces por capítulo/término técnico."""
+    from bs4 import BeautifulSoup
+    from urllib.parse import urljoin,urlparse
+    grupo=_aero_tema_grupo(caso)
+    semillas=list(AERO_CAPITULOS_FAA.get(grupo,()))
+    candidatos=[];vistos=set()
+    # Catalogar capítulos referenciados por sus títulos y nombres reales.
+    for origen in semillas:
+        try:
+            with session.get(origen,timeout=(6,17)) as resp:
+                if not resp.ok or 'html' not in resp.headers.get('Content-Type','text/html'):continue
+                raiz=BeautifulSoup(resp.text,'html.parser')
+                for a in raiz.find_all('a',href=True):
+                    url=_url_publica_investigacion(urljoin(resp.url,a['href']))
+                    if not url or url in vistos:continue
+                    if not urlparse(url).path.lower().endswith('.pdf'):continue
+                    host=urlparse(url).hostname or ''
+                    if not (host=='faa.gov' or host.endswith('.faa.gov')):continue
+                    titulo=a.get_text(' ',strip=True)
+                    etiqueta=_aero_norm(titulo+' '+url)
+                    tokens=_tokens_tema(caso)
+                    relevancia=sum(1 for tk in tokens if tk in etiqueta)
+                    # Chapter 7 Aircraft Systems contiene presurización.
+                    if _tema_id_actual(caso)=='motor_07' and re.search(r'chapter[ -]?7|ch7|aircraft systems',etiqueta):relevancia+=10
+                    candidatos.append((relevancia,url,titulo or 'FAA: capítulo técnico PDF'))
+                    vistos.add(url)
+        except Exception as exc:
+            print('  Índice FAA no accesible:',str(exc)[:85],flush=True)
+    candidatos.sort(key=lambda x:(-x[0],x[1]))
+    # No inspeccionar cientos de PDFs genéricos por episodio.
+    return [(nombre,url) for _,url,nombre in candidatos[:limite]]
+
+def _aero_busqueda_rss_filtrada(session,caso):
+    """RSS es índice no evidencia. Evita páginas Microsoft, reservas y comercios."""
+    import xml.etree.ElementTree as ET
+    consultas=_aero_consultas(caso)
+    resultados=[];vistos=set()
+    for consulta in consultas[:3]:
+        try:
+            r=session.get('https://www.bing.com/search',params={'q':consulta,'format':'rss'},timeout=(6,12))
+            r.raise_for_status()
+            for item in ET.fromstring(r.content).findall('.//item')[:12]:
+                url=_url_publica_investigacion(item.findtext('link'))
+                if not url or url in vistos:continue
+                dominio=urlparse(url).hostname or ''
+                if not any(dominio==d or dominio.endswith('.'+d) for d in AERO_FUENTES_DOMINIOS_PREFERENTES):continue
+                titulo=item.findtext('title') or 'Documento técnico'
+                if any(term in _aero_norm(titulo) for term in ('login','microsoft','flight booking','cheap tickets')):continue
+                vistos.add(url);resultados.append((url,titulo[:120]))
+        except Exception as e:print('  Buscador web opcional:',type(e).__name__,str(e)[:85],flush=True)
+    return resultados[:AERO_BUSQUEDA_MAX_URLS]
+
+def investigar_episodio(caso, carpeta, session):
+    """Biblioteca local -> primarias específicas -> índices FAA -> IA -> RSS filtrado.
+    Cada página se lee y verifica; ausencia de evidencia detiene la publicación.
+    """
+    carpeta=Path(carpeta);carpeta.mkdir(parents=True,exist_ok=True)
+    documentos=[];vistos=set();rechazadas=[];errores_busqueda=[];consultas_ia=[]
+    minimo=AERO_MIN_FUENTES;maximo=max(AERO_MAX_DOCUMENTOS,minimo)
+    objetivo=min(maximo,max(minimo,2))
+    tema=_tema_id_actual(caso)
+    def probar(url,nombre):
         url=_url_publica_investigacion(url)
-        if url and url not in vistos:
-            vistos.add(url)
-            doc=_leer_documento_web(session,url,caso,nombre)
-            if doc and doc['url'] not in {d['url'] for d in documentos}:
-                doc['id']='F'+str(len(documentos)+1)
-                documentos.append(doc)
-                print('  Documento primario recuperado:',doc['id'],doc['nombre'][:75],len(doc['texto']),'caracteres',flush=True)
-                return True
-            rechazadas.append(url)
-        return False
-    # Las fuentes temáticas se prueban ANTES de Bing; nunca confundir un buscador
-    # de vuelos o el inicio de una aerolínea con información financiera.
-    oficiales=(FUENTES_DIRECTAS_TECNOLOGIA.get(tema,[])
-               +FUENTES_DIRECTAS_ECONOMIA.get(tema,[])
-               +_rutas_documentacion_oficial(caso))
-    oficiales += [(item[0],item[1]) for item in caso.get('fuentes',[]) if len(item)>=2]
-    for nombre,url in oficiales:
-        if len(documentos)>=4:break
-        incluir(url,nombre)
-        if not documentos and 'faa.gov' in url and not url.lower().endswith('.pdf'):
-            for pdf,titulo in _descubrir_pdf_faa(session,url,caso):
-                incluir(pdf,'FAA: '+(titulo or nombre))
-    # URLs explícitas del operador tienen prioridad sobre cualquier búsqueda.
+        if not url or url in vistos or len(documentos)>=maximo:return False
+        vistos.add(url)
+        doc=_aero_descargar_documento(session,url,caso,nombre)
+        if doc and doc['url'] not in {d['url'] for d in documentos}:
+            doc['id']='F'+str(len(documentos)+1)
+            documentos.append(doc)
+            print('  Evidencia:',doc['id'],doc['nombre'][:70],
+                  '(cache)' if doc.get('cache') else '(web)',flush=True)
+            return True
+        rechazadas.append(url);return False
     for url in AERO_IA_URLS.split('|'):
-        if url.strip():incluir(url,'URL configurada')
-        if len(documentos)>=5:break
-    # El descubrimiento IA se utiliza si hace falta complementar; errores 429
-    # no impiden usar documentos oficiales obtenidos sin coste de IA.
-    if len(documentos)<max(2,AERO_IA_MIN_FUENTES):
-        candidatas,errores=_descubrir_fuentes_ia(caso)
-        propuestas.extend(candidatas);errores_busqueda.extend(errores)
-        for url,nombre in candidatas:
-            if len(documentos)>=5:break
-            incluir(url,nombre)
-    # Para los documentos ya encontrados no malgastar tiempo en páginas de
-    # aerolíneas/OTAs irrelevantes. RSS acotado sólo como emergencia.
-    if len(documentos)<AERO_IA_MIN_FUENTES:
-        rss,errores=_descubrir_fuentes_rss(session,caso)
-        errores_busqueda.extend(errores)
-        for url,nombre in rss[:8]:
-            if len(documentos)>=AERO_IA_MIN_FUENTES:break
-            dominio=(urlparse(url).hostname or '').lower()
-            if not any(dominio==d or dominio.endswith('.'+d) for d in AERO_FUENTES_DOMINIOS_PREFERENTES):
-                rechazadas.append(url+' [RSS: dominio sin respaldo técnico]');continue
-            incluir(url,nombre)
-    informe={'tema':caso['titulo'],'fecha_utc':datetime.now(timezone.utc).isoformat(),
-             'modo_investigacion':AERO_INVESTIGACION_WEB,
-             'candidatos_ia':[{'url':u,'origen':n} for u,n in propuestas],
-             'errores_busqueda_ia':errores_busqueda,'consultados':len(vistos),
-             'descartadas':rechazadas,
+        if url.strip():probar(url,'Fuente proporcionada')
+    directas=(AERO_FUENTES_TEMATICAS_EXTRA.get(tema,[])+
+              FUENTES_DIRECTAS_TECNOLOGIA.get(tema,[])+
+              FUENTES_DIRECTAS_ECONOMIA.get(tema,[])+
+              _rutas_documentacion_oficial(caso))
+    for item in caso.get('fuentes',[]):
+        if len(item)>=2:directas.append((item[0],item[1]))
+    # Primero recursos primarios. Páginas índice se pueden rechazar, pero luego
+    # se exploran capítulos específicos: no contabilizar índice como evidencia.
+    for nombre,url in directas:
+        if len(documentos)>=objetivo:break
+        probar(url,nombre)
+    if AERO_INVESTIGACION_UNIVERSAL and len(documentos)<objetivo:
+        for nombre,url in _aero_descubrir_en_paginas_oficiales(session,caso,limite=8):
+            if len(documentos)>=objetivo:break
+            probar(url,nombre)
+    if len(documentos)<minimo:
+        for url,nombre in _aero_busqueda_rss_filtrada(session,caso):
+            if len(documentos)>=maximo:break
+            probar(url,nombre)
+    # Buscar con LLM solo si las fuentes gratuitas y directas no alcanzan.
+    if len(documentos)<minimo:
+        consultas_ia,errores_busqueda=_descubrir_fuentes_ia(caso)
+        for url,nombre in consultas_ia:
+            if len(documentos)>=maximo:break
+            probar(url,nombre)
+    reporte={'tema':caso['titulo'],'caso_id':tema,
+             'fecha_utc':datetime.now(timezone.utc).isoformat(),
+             'documentos_validos':len(documentos),'minimo':minimo,
+             'urls_probadas':len(vistos),'urls_descartadas':rechazadas,
+             'errores_descubrimiento':errores_busqueda,
+             'candidatos_ia':[{'url':u,'nombre':n} for u,n in consultas_ia],
              'fuentes':[{'id':d['id'],'nombre':d['nombre'],'url':d['url'],
-                         'coincidencias_tema':d['coincidencias_tema'],
+                         'puntuacion':d['coincidencias_tema'],'cache':d.get('cache',False),
                          'extracto':d['texto'][:900]} for d in documentos]}
     (carpeta/'FUENTES_INVESTIGACION.json').write_text(
-        json.dumps(informe,ensure_ascii=False,indent=2),encoding='utf-8')
-    if len(documentos)<AERO_IA_MIN_FUENTES:
-        raise RuntimeError(f'Investigación insuficiente: {len(documentos)} fuentes reales legibles; '
-                           f'mínimo {AERO_IA_MIN_FUENTES}. Revisar FUENTES_INVESTIGACION.json. '
-                           'El agotamiento de cuotas IA no autoriza a inventar guiones ni evidencia.')
+       json.dumps(reporte,ensure_ascii=False,indent=2),encoding='utf-8')
+    if len(documentos)<minimo:
+        raise EpisodioRecuperable(f'{tema}: {len(documentos)} fuentes técnicas legibles; '
+            f'mínimo {minimo}. Diagnóstico: {carpeta/"FUENTES_INVESTIGACION.json"}')
     return documentos
-
 
 def _limpiar_json_ia(texto):
     texto=(texto or '').strip()
@@ -2623,8 +2898,14 @@ def producir_episodio(episodio,historial):
     sesion=requests.Session()
     verificar_fuentes(caso,sesion,carpeta)  # disponibilidad general, NO fact-check
     print('Investigando documentos y noticias accesibles...')
-    documentos=investigar_episodio(caso,carpeta,sesion)
-    plan=generar_guion_investigado(caso,episodio,documentos,carpeta)
+    try:
+        documentos=investigar_episodio(caso,carpeta,sesion)
+        plan=generar_guion_investigado(caso,episodio,documentos,carpeta)
+    except Exception as exc:
+        # Solo fases anteriores a TTS y publicación admiten cambiar de tema.
+        (carpeta/'ERROR_PREPRODUCCION.txt').write_text(
+            f'{type(exc).__name__}: {exc}\n',encoding='utf-8')
+        raise EpisodioRecuperable(str(exc)) from exc
     fuentes=[{'nombre':d['nombre'],'url':d['url'],'status':'documento_leido',
               'id':d['id']} for d in documentos]
     if AERO_IA_DRY_RUN:
@@ -2677,28 +2958,81 @@ def producir_episodio(episodio,historial):
     return video
 
 def ejecutar():
-    if not AERO_IA_DRY_RUN:
-        asegurar_dependencias()
+    """Un fallo de fuentes/guion permite probar otro tema, sin repetir publicaciones."""
+    if not AERO_IA_DRY_RUN:asegurar_dependencias()
     historial=ruta_historial()
     cantidad=int(VIDEOS_POR_EJECUCION)
-    if cantidad<1 or cantidad>len(CATALOGO_AERONAUTICO):raise ValueError('VIDEOS_POR_EJECUCION debe estar entre 1 y '+str(len(CATALOGO_AERONAUTICO))+'.')
+    if not 1<=cantidad<=len(CATALOGO_AERONAUTICO):
+        raise ValueError('AERO_VIDEOS_POR_EJECUCION fuera del catálogo.')
     if PUBLICAR_EN_YOUTUBE and not AERO_IA_DRY_RUN:
         if YOUTUBE_PRIVACY!='private' and not PERMITIR_PUBLICACION_SIN_REVISION:
-            raise RuntimeError('Publicación pública requiere ALLOW_UNREVIEWED_PUBLICATION=true tras revisión editorial.')
+            raise RuntimeError('Publicación pública requiere ALLOW_UNREVIEWED_PUBLICATION=true.')
         validar_canal_youtube(youtube_servicio())
-    elegidos=elegir_episodios(cantidad,historial)
-    usados=len({x.get('episodio') for x in leer_historial(historial)})
-    print(f'Catálogo: {len(CATALOGO_AERONAUTICO)} temas aeronáuticos únicos en {len(ENFOQUE_CATEGORIA)} áreas.')
-    print('Generados anteriormente:',usados,'| Seleccionados para esta ejecución:',len(elegidos))
-    print('Selección aleatoria:',', '.join(e['id'] for e in elegidos))
-    resultados=[]
-    for i,episodio in enumerate(elegidos,1):
-        print(f'\n====== VIDEO {i} DE {cantidad} ======',flush=True)
-        resultados.append(producir_episodio(episodio,historial))
+    ya={r.get('episodio') for r in leer_historial(historial)}
+    candidatos=[x for x in CATALOGO_AERONAUTICO if x not in ya]
+    if TEMA!='aleatorio':
+        if TEMA not in CATALOGO_AERONAUTICO:raise ValueError('Tema desconocido: '+TEMA)
+        candidatos=[TEMA]
+        if AERO_PERMITIR_CAMBIO_TEMA_EXPLICITO and AERO_CAMBIAR_TEMA_SI_FALLA:
+            candidatos += [x for x in CATALOGO_AERONAUTICO if x not in ya and x!=TEMA]
+    rng=random.SystemRandom();cola=candidatos[:1] if TEMA!='aleatorio' else []
+    restantes=[x for x in candidatos if x not in cola]
+    rng.shuffle(restantes);cola.extend(restantes)
+    print(f'Catálogo: {len(CATALOGO_AERONAUTICO)} temas en {len(ENFOQUE_CATEGORIA)} áreas.')
+    print('Publicados o generados antes:',len(ya),'| objetivo actual:',cantidad)
+    if not cola:raise RuntimeError('No hay episodios nuevos disponibles.')
+    max_intentos=min(len(cola),max(cantidad,AERO_MAX_TEMAS_POR_EJECUCION))
+    if not AERO_CAMBIAR_TEMA_SI_FALLA:max_intentos=min(max_intentos,cantidad)
+    resultados=[];fallos=[]
+    for episodio_id in cola[:max_intentos]:
+        if len(resultados)>=cantidad:break
+        episodio=dict(CATALOGO_AERONAUTICO[episodio_id])
+        print(f'\n=== INTENTO {len(resultados)+len(fallos)+1}/{max_intentos} '
+              f'· {episodio_id} · videos completados {len(resultados)}/{cantidad} ===',flush=True)
+        try:
+            resultado=producir_episodio(episodio,historial)
+            resultados.append(resultado)
+        except EpisodioRecuperable as exc:
+            fallos.append({'tema':episodio_id,'error':str(exc)[:900],
+                           'fecha_utc':datetime.now(timezone.utc).isoformat()})
+            print('  TEMA PENDIENTE (no marcado como publicado):',episodio_id,str(exc)[:330],flush=True)
+            if not AERO_CAMBIAR_TEMA_SI_FALLA:break
+        # Errores de publicación, imágenes, TTS y subida no se capturan aquí:
+        # pueden representar cargas parciales y requieren revisión, no duplicados.
+    OUTPUT_BASE.mkdir(parents=True,exist_ok=True)
+    (OUTPUT_BASE/'ULTIMO_INFORME_EJECUCION.json').write_text(json.dumps({
+        'fecha_utc':datetime.now(timezone.utc).isoformat(),
+        'videos_completados':len(resultados),'videos_solicitados':cantidad,
+        'fallos_preproduccion':fallos,'resultados':[str(r) for r in resultados]
+    },ensure_ascii=False,indent=2),encoding='utf-8')
+    if len(resultados)<cantidad:
+        raise RuntimeError(f'Se completaron {len(resultados)}/{cantidad} videos. '
+                           f'Se probaron hasta {max_intentos} temas. '
+                           'Revisar ULTIMO_INFORME_EJECUCION.json. '
+                           'Nunca se publican guiones sin evidencia.')
     return resultados
 
+def prueba_interna():
+    """Pruebas locales sin HTTP, credenciales, imagen ni publicación."""
+    assert len(CATALOGO_AERONAUTICO)==100
+    assert VOZ=='es-CL-LorenzoNeural' and PRONUNCIACION_INGLES is False
+    assert normalizar_unidades_narracion('1 NM y 120 nm')=='1 milla náutica y 120 millas náuticas'
+    caso=dict(CASOS['motor_07'],_episodio={'caso_id':'motor_07'})
+    bueno=('Aircraft cabin pressurization provides a pressurized cabin. '
+           'Cabin altitude and differential pressure are controlled by an outflow valve. ')*10
+    assert _aero_documento_relevante(bueno,caso)>0
+    assert _aero_documento_relevante('Microsoft account login and consumer software '*30,caso)==0
+    assert _aero_documento_relevante('Aviation aircraft flight information '*30,caso)==0
+    caso2=dict(CASOS['future_03'],_episodio={'caso_id':'future_03'})
+    hid=('Hydrogen aircraft hydrogen propulsion and liquid hydrogen storage '
+         'for aviation certification and infrastructure. ')*12
+    assert _aero_documento_relevante(hid,caso2)>0
+    print('OK: catálogo, voz Lorenzo, NM y relevancia específica en motor_07/future_03')
+
 if __name__=='__main__':
-    if '--auth-init' in sys.argv:
+    if '--self-test' in sys.argv:
+        prueba_interna()
+    elif '--auth-init' in sys.argv:
         iniciar_oauth_local()
     elif '--check-auth' in sys.argv:
         validar_canal_youtube(youtube_servicio())
