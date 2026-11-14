@@ -176,6 +176,18 @@ def _relevancia_documento(texto, caso):
                     r'\bavi[oó]n\b', r'\baeron[aá]utic\w*\b')
         if not any(re.search(clave, t, re.I) for clave in contexto):
             return 0
+    if tema_id == 'fin_05':
+        # El nombre 'jet' aislado no demuestra costes de combustible.
+        # Exigir coocurrencia de costes/finanzas y combustible/aerolíneas.
+        combustible=(r'jet[ -]?fuel',r'aviation fuel',r'fuel costs?',r'fuel expenses?',
+                     r'fuel prices?',r'fuel consumption',r'combustible',r'queroseno')
+        economico=(r'airline',r'carriers?',r'operating costs?',r'operating expenses?',
+                   r'profit',r'cost per gallon',r'hedg',r'aerol[ií]neas?',
+                   r'costos?',r'gastos?',r'precio')
+        if not any(re.search(p,t,re.I) for p in combustible) or not any(
+                re.search(p,t,re.I) for p in economico):
+            return 0
+        return max(2,len(coincidencias))
     if tema_id=='future_05' and not coincidencias.intersection(
             {'composite','composites','advanced composite materials','carbon fiber',
              'carbon fibre','fiber reinforced','fiberglass','laminate',
@@ -290,6 +302,15 @@ def _rutas_documentacion_oficial(caso):
     tema_id=caso.get('_episodio',{}).get('caso_id',caso.get('id',''))
     phak='https://www.faa.gov/regulationspolicies/handbooksmanuals/aviation/phak/'
     rutas={
+      'fin_05':[
+        ('IATA: Fuel costs, aviation economics and profitability 2026',
+         'https://www.iata.org/en/pressroom/2026-releases/06-07-middle-east-disruptions-high-fuel-prices-halve-airline-industry-profitability/'),
+        ('U.S. BTS: Airline fuel cost and consumption, July 2026',
+         'https://www.bts.gov/newsroom/us-airlines-july-2026-aviation-fuel-cost-down-18-consumption-38-and-fuel-cost-gallon-down'),
+        ('IATA: Global outlook, operating and fuel expenses',
+         'https://www.iata.org/en/iata-repository/publications/economic-reports/global-outlook-for-air-transport-december-2025/'),
+        ('U.S. BTS: Airline fuel costs and consumption, historical series',
+         'https://www.transtats.bts.gov/fuel.asp')],
       'nav_01':[
         ('FAA: PHAK, capítulo 8 Flight Instruments (PDF)',
          'https://www.faa.gov/sites/faa.gov/files/10_phak_ch8.pdf'),
@@ -506,6 +527,8 @@ def _descubrir_fuentes_openrouter(caso):
     return [(url,'OpenRouter web search') for url in _enlaces_de_texto_investigado(texto)]
 
 
+_AERO_MOTORES_SIN_CUOTA=set()
+
 def _descubrir_fuentes_ia(caso):
     """Fuentes candidatas descubiertas con motores IA y herramientas de búsqueda."""
     modo=AERO_INVESTIGACION_WEB
@@ -539,6 +562,8 @@ def _descubrir_fuentes_ia(caso):
         except Exception as exc:
             msg=f'{motor}: {type(exc).__name__}: {str(exc)[:210]}'
             errores.append(msg);print('  Búsqueda IA no disponible:',msg,flush=True)
+            if 'HTTP 429' in msg and ('quota' in msg.lower() or 'exceeded' in msg.lower()):
+                _AERO_MOTORES_SIN_CUOTA.add(motor)
     unicos=[]; vistos=set()
     for url,nombre in encontrados:
         if url not in vistos and _url_publica_investigacion(url):
@@ -563,6 +588,9 @@ def _descubrir_fuentes_rss(session, caso):
         consultas=['aviation low level wind shear microburst pilot guidance',
                    'aircraft windshear microburst detection aviation safety']
     tema_id=caso.get('_episodio',{}).get('caso_id',caso.get('id',''))
+    if tema_id=='fin_05':
+        consultas=['airline jet fuel operating costs IATA profitability 2026',
+                   'airline aviation fuel expense percentage total operating expenses BTS IATA']
     if tema_id=='safe_10':
         consultas=['go around rejected landing aviation safety EASA FAA',
                    'go around stabilised approach flight safety']
@@ -688,6 +716,11 @@ def investigar_episodio(caso, carpeta, session):
                          'extracto':d['texto'][:900]} for d in documentos]}
     (carpeta/'FUENTES_INVESTIGACION.json').write_text(
         json.dumps(informe,ensure_ascii=False,indent=2),encoding='utf-8')
+    if caso.get('_episodio',{}).get('caso_id',caso.get('id',''))=='fin_05' \
+            and not any(('iata.org' in d['url'] or 'bts.gov' in d['url'] or 'transtats.bts.gov' in d['url'])
+                        for d in documentos):
+        raise RuntimeError('Investigación financiera sin documento primario de IATA/BTS. '
+                           'Se rechazan artículos generales sobre reactores o sobre la palabra jet.')
     if len(documentos)<AERO_IA_MIN_FUENTES:
         raise RuntimeError(f'Investigación insuficiente: {len(documentos)} fuentes legibles; '
                            f'mínimo {AERO_IA_MIN_FUENTES}. Consultar FUENTES_INVESTIGACION.json. '
@@ -829,9 +862,19 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
     if AERO_IA_MODO not in ('auto','gemini','groq','openrouter'):
         raise ValueError('AERO_IA_MODO debe ser auto, gemini, groq u openrouter')
     fuentes_prompt=[]
-    for doc in documentos:
+    for doc in sorted(documentos,key=lambda d: -d.get('coincidencias_tema',0))[:3]:
+        original=doc['texto']
+        texto=original[:6500]
+        # Fragmentos literales de lectura humana. No se altera texto_fuente.
+        fragmentos=[]
+        for frase in re.split(r'(?<=[.!?])\s+',texto):
+            frase=frase.strip()
+            if 45<=len(frase)<=260 and _relevancia_documento(frase,caso)>0:
+                fragmentos.append(frase)
+            if len(fragmentos)==8:break
         fuentes_prompt.append({'id':doc['id'],'titulo':doc['nombre'],
-              'url':doc['url'],'texto_fuente':doc['texto'][:10000]})
+              'url':doc['url'],'texto_fuente':texto,
+              'citas_candidatas_literales':fragmentos})
     historial_textos=[]
     try:
         for item in leer_historial(ruta_historial())[-8:]:
@@ -851,6 +894,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
          'Usa EXCLUSIVAMENTE hechos sustentables en las fuentes incluidas; no inventes cifras, fechas, citas o normativa.',
          'Si las fuentes hablan de algo tangencial, delimita con honestidad el alcance; no extrapoles.',
          'Incluye entre 3 y 6 hechos_con_evidencia: {fuente_id, afirmacion, cita_textual}; cita_textual debe copiar literalmente 28 a 240 caracteres consecutivos de texto_fuente.',
+         'Para cita_textual copia de forma EXACTA una subcadena de texto_fuente; puedes reutilizar citas_candidatas_literales cuando sean relevantes. No parafrasees ni traduzcas una cita.',
          'Escribe ocho bloques en orden EXACTO: gancho,pregunta,contexto,pista,analisis,evidencia,aplicacion,conclusion.',
          'Cada bloque: {tipo,texto}; intenta 35 a 55 palabras, máximo 105. Total de ocho bloques entre 235 y 490 palabras.',
          'Debes aportar al menos tres aprendizajes específicos y un ejemplo explicado sin inventar incidentes.',
@@ -866,6 +910,10 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
     motores=['gemini','groq','openrouter'] if AERO_IA_MODO=='auto' else [AERO_IA_MODO]
     errores=[]
     for motor in motores:
+        if motor in _AERO_MOTORES_SIN_CUOTA:
+            print('  Motor de guion omitido por cuota agotada en esta ejecución:',motor,flush=True)
+            errores.append(motor+': cuota agotada detectada en investigación')
+            continue
         prompt_motor=prompt
         for intento in range(1,3):
             try:
