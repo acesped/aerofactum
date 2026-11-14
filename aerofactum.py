@@ -30,7 +30,7 @@ EVITAR_REPETICIONES = True     # requiere historial en Drive para persistir entr
 REINICIAR_CATALOGO_AL_AGOTAR = False
 FOTOGRAMAS_POR_SEGUNDO = 15
 ANCHO, ALTO = 1920, 1080        # render nativo Full HD para exportación 1080p real
-IMAGENES_MINIMAS = 4            # mínimo de fotografías inequívocamente aeronáuticas
+IMAGENES_MINIMAS = max(3, min(10, int(os.getenv('AERO_IMAGENES_MINIMAS', '4'))))  # mínimo editorial configurable; por defecto 4
 IMAGENES_MINIMAS_ABSOLUTAS = 1 # mínimo para crear borradores privados; publicación no privada exige IMAGENES_MINIMAS
 MAX_IMAGENES = 10
 VERIFICACION_OBLIGATORIA = False # si True, detiene cuando no hay referencias oficiales accesibles
@@ -160,6 +160,22 @@ def _relevancia_documento(texto, caso):
     tokens=_tokens_tema(caso)
     coincidencias={x for x in tokens if re.search(r'\b'+re.escape(x)+r'\b',t)}
     tema_id=caso.get('_episodio',{}).get('caso_id',caso.get('id',''))
+    if tema_id == 'meteo_03':
+        # Impedir falsos positivos de artículos sobre "wind", "LA" o clima genérico.
+        # Solo una mención específica a cizalladura/microburst cuenta como fuente.
+        claves = (r'\bwind[\s-]?shear\b', r'\bwindshear\b',
+                  r'\bmicrobursts?\b', r'\bdownbursts?\b',
+                  r'\bcizalladura\b', r'\bLLWAS\b',
+                  r'\blow[\s-]?level[\s-]?wind[\s-]?shear\b')
+        if not any(re.search(clave, t, re.I) for clave in claves):
+            return 0
+        # Asegurar relación con aeronaves, aproximación, seguridad o radar.
+        contexto = (r'\baircraft\b', r'\baviation\b', r'\bairport\b',
+                    r'\bflight\b', r'\bpilot\b', r'\blanding\b',
+                    r'\bapproach\b', r'\btdwr\b', r'\bflight safety\b',
+                    r'\bavi[oó]n\b', r'\baeron[aá]utic\w*\b')
+        if not any(re.search(clave, t, re.I) for clave in contexto):
+            return 0
     if tema_id=='future_05' and not coincidencias.intersection(
             {'composite','composites','advanced composite materials','carbon fiber',
              'carbon fibre','fiber reinforced','fiberglass','laminate',
@@ -293,6 +309,13 @@ def _rutas_documentacion_oficial(caso):
          'https://www.nasa.gov/directorates/armd/aavp/hicam/about-hicam/'),
         ('FAA: Reparaciones y alteraciones de estructuras compuestas',
          'https://www.faa.gov/regulations_policies/advisory_circulars/index.cfm/go/document.information/documentid/1029806')],
+      'meteo_03':[
+        ('FAA: Terminal Doppler Weather Radar, microbursts and wind shear',
+         'https://www.faa.gov/air_traffic/weather/tdwr'),
+        ('FAA AIM: Safety of Flight, wind shear and microbursts',
+         'https://www.faa.gov/air_traffic/publications/aim_html/chap7_section_1.html'),
+        ('FAA JO 7110.65: Low Level Wind Shear advisories',
+         'https://www.faa.gov/air_traffic/publications/atpubs/atc_html/chap3_section_1.html')],
       'safe_10':[
         ('EASA: Approach and landing safety — go-around',
          'https://www.easa.europa.eu/en/domains/general-aviation/flying-safely/loss-of-control-in-approach-and-landing'),
@@ -530,8 +553,15 @@ def _descubrir_fuentes_rss(session, caso):
     validar la fuente original antes de emplearla como evidencia.
     """
     import xml.etree.ElementTree as ET
-    consultas=[caso.get('titulo','') + ' aviation',
-               ' '.join((caso.get('imagenes') or [])[:1]) + ' aviation safety']
+    # Evitar títulos españoles con artículos ambiguos como "La" => Los Angeles.
+    # Priorizar consultas técnicas en inglés, ancladas al fenómeno aeronáutico.
+    consulta_tecnica=' '.join((caso.get('imagenes') or [])[:1]).strip()
+    consultas=[consulta_tecnica + ' aircraft aviation safety',
+               consulta_tecnica + ' technical aviation weather guidance']
+    tema_id=caso.get('_episodio',{}).get('caso_id',caso.get('id',''))
+    if tema_id=='meteo_03':
+        consultas=['aviation low level wind shear microburst pilot guidance',
+                   'aircraft windshear microburst detection aviation safety']
     tema_id=caso.get('_episodio',{}).get('caso_id',caso.get('id',''))
     if tema_id=='safe_10':
         consultas=['go around rejected landing aviation safety EASA FAA',
@@ -575,7 +605,9 @@ def investigar_episodio(caso, carpeta, session):
     # Consultar también si el proveedor de IA está sin cuota o temporalmente caído.
     candidatas_rss,errores_rss=_descubrir_fuentes_rss(session,caso)
     errores_busqueda.extend(errores_rss)
-    consultas.extend(candidatas_rss)
+    # Las páginas de búsqueda pueden mezclar noticias locales irrelevantes;
+    # reservarlas para después de intentar fuentes técnicas específicas.
+    consultas_rss=candidatas_rss
     especificas=_rutas_documentacion_oficial(caso)
     # Referencias curadas no se imponen: son respaldo cuando la búsqueda IA falla.
     respaldo=[(url,nombre) for nombre,url in especificas]
@@ -594,7 +626,13 @@ def investigar_episodio(caso, carpeta, session):
                   f"({len(doc['texto'])} caracteres)",flush=True)
             return True
         rechazadas.append(url[:200]);return False
-    # Primero las fuentes encontradas por Gemini/Groq, de diversos dominios.
+    # Priorizar documentación técnica específica; la búsqueda IA y RSS amplían
+    # la cobertura, pero no deben desplazar estas fuentes por límite de URLs.
+    for url,nombre in respaldo[:5]:
+        if len(documentos)>=3:break
+        probar(url,nombre)
+    # Seguir con fuentes IA y RSS, siempre con filtro temático estricto.
+    consultas.extend(consultas_rss)
     for url,nombre in consultas[:AERO_BUSQUEDA_MAX_URLS+5]:
         if len(documentos)>=5:break
         probar(url,nombre)
