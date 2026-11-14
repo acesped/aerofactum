@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 5.1 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 5.2 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
@@ -30,7 +30,7 @@ EVITAR_REPETICIONES = True     # requiere historial en Drive para persistir entr
 REINICIAR_CATALOGO_AL_AGOTAR = False
 FOTOGRAMAS_POR_SEGUNDO = 15
 ANCHO, ALTO = 1920, 1080        # render nativo Full HD para exportación 1080p real
-IMAGENES_MINIMAS = 4            # mínimo de fotografías inequívocamente aeronáuticas
+IMAGENES_MINIMAS = max(2,min(10,int(os.getenv('AERO_IMAGENES_MINIMAS','4'))))  # mínimo editorial, configurable
 IMAGENES_MINIMAS_ABSOLUTAS = 1 # mínimo para crear borradores privados; publicación no privada exige IMAGENES_MINIMAS
 MAX_IMAGENES = 10
 VERIFICACION_OBLIGATORIA = False # si True, detiene cuando no hay referencias oficiales accesibles
@@ -787,7 +787,7 @@ def _leer_documento_web(session,url,caso,origen):
         return None
 
 
-# ==================== AEROFACTUM 5.1: INVESTIGACIÓN UNIVERSAL ====================
+# ==================== AEROFACTUM 5.2: INVESTIGACIÓN UNIVERSAL ====================
 # No hay dependencias adicionales respecto de la versión 4.9.
 # El cache almacena respuestas DOCUMENTALES, nunca conclusiones de IA.
 
@@ -1228,6 +1228,9 @@ def _validar_titulo_youtube(datos, caso):
                   'te dejara sin palabras', 'impactante revelación', 'impactante revelacion',
                   'secreto oculto', '100% garantizado')
     normal = ''.join(c for c in unicodedata.normalize('NFKD',titulo.casefold()) if not unicodedata.combining(c))
+    if re.search(r'\b(?:videos? de la faa|pagina de la faa|sitio web de la faa|'
+                 r'fuentes? de la faa|manuales? de la faa)\b', normal):
+        raise ValueError('Título centrado en la fuente, no en el fenómeno aeronáutico.')
     if any(x in normal for x in prohibidos):
         raise ValueError('Título con clickbait no verificable.')
     original = ''.join(c for c in unicodedata.normalize('NFKD',caso['_titulo_caso'].casefold()) if not unicodedata.combining(c))
@@ -1677,6 +1680,14 @@ def _consultas_fotos(caso):
             'airport thunderstorm weather',
             'wind shear storm',
         ]
+    if (caso.get('_episodio') or {}).get('caso_id') == 'atc_02':
+        consultas = [
+            'aircraft taxiing', 'airplane taxiing', 'airliner taxiway',
+            'aircraft ground movement', 'airport taxiway aircraft',
+            'commercial aircraft taxiing', 'jet taxiing runway',
+            'aircraft taxiway hold short', 'airport ground traffic',
+            'avion rodaje aeropuerto',
+        ] + consultas
     # Consultas documentales relacionadas con la utilización de aeronaves:
     # rotaciones, escalas y operaciones reales, no diagramas conceptuales.
     if re.search(r'utilizaci[oó]n diaria|horas de utilizaci[oó]n|rotaci[oó]n de aeronaves', titulo, re.I):
@@ -1825,6 +1836,16 @@ def evaluar_relevancia_foto(caso, titulo, metadata, busqueda):
         # Si no hay evidencia fuerte en el título, no basarse solamente
         # en categorías amplias o etiquetas de búsqueda de Commons.
         return 0, []
+    if (caso.get('_episodio') or {}).get('caso_id') == 'atc_02':
+        # Rodaje: una torre ATC o fachada de aeropuerto NO es prueba visual
+        # de una aeronave rodando. La evidencia principal debe estar en el título.
+        movimiento = re.search(r'\b(?:taxi(?:ing)?|taxiway|taxiways|taxiing|'
+                              r'ground movement|ground handling|rodaje|rodando)\b', titulo_l)
+        aeronave = re.search(r'\b(?:aircraft|airplane|aeroplane|airliner|'
+                            r'airbus|boeing|jet|a320|b737|plane|avion|aeronave)\b', titulo_l)
+        if not (movimiento and aeronave):
+            return 0, []
+        return 22 + 3*len(set(titulo_l.split()) & {'taxiing','taxiway','rodaje'}), ['rodaje','aeronave']
     if not AVIACION_EN_TITULO.search(titulo_l):
         return 0, []
     metatexto = ' '.join(limpiar_html(metadata.get(k, {}).get('value', ''))
@@ -1887,11 +1908,15 @@ def buscar_fotos(caso,session,carpeta):
     # Las consultas específicas y contextuales ya las aporta _consultas_fotos.
     caso_id=(caso.get('_episodio') or {}).get('caso_id','')
     # Consultas de respaldo dirigidas al fenómeno, NO a temas científicos genéricos.
-    queries=list(dict.fromkeys(queries))[:6]
+    queries=list(dict.fromkeys(queries))[:max(6,min(18,int(os.getenv('AERO_CONSULTAS_FOTOS','14'))))]
     api='https://commons.wikimedia.org/w/api.php'
     candidatos=[];titulos_vistos=set()
     rate_limitado = False
     for i_busqueda, busqueda in enumerate(queries):
+        # Parar una vez exista un banco suficiente de candidatos para descargar.
+        if i_busqueda >= 6 and len(candidatos) >= max(18, IMAGENES_MINIMAS*4):
+            print('  Commons: suficientes candidatos; se evita consultar búsquedas adicionales.',flush=True)
+            break
         if i_busqueda:
             time.sleep(1.5)  # Evitar ráfagas a la API de Wikimedia
         try:
@@ -1945,6 +1970,7 @@ def buscar_fotos(caso,session,carpeta):
             'reprogramar la ejecución o utilizar fotografías ya verificadas con licencias y atribución.\n',
             encoding='utf-8')
     candidatos.sort(key=lambda item:item[0],reverse=True)
+    print(f'  Commons: {len(candidatos)} fotografías candidatas tras {len(queries)} consultas planificadas.',flush=True)
     for puntos,archivo,info,url,matches,busqueda in candidatos:
         if len(fotos)>=MAX_IMAGENES:break
         try:
@@ -2971,7 +2997,11 @@ def producir_episodio(episodio,historial):
         print('PRUEBA GUION COMPLETADA, sin fotos, TTS ni publicación:',carpeta,flush=True)
         return carpeta/'GUION_PREVIO.txt'
     print('Buscando fotos con atribución y licencias abiertas...')
-    fotos,creditos=buscar_fotos(caso,sesion,carpeta)
+    try:
+        fotos,creditos=buscar_fotos(caso,sesion,carpeta)
+    except Exception as exc:
+        (carpeta/'ERROR_FOTOGRAFIAS.txt').write_text(str(exc)+'\n',encoding='utf-8')
+        raise EpisodioRecuperable('No hay suficientes fotografías descargables: '+str(exc)) from exc
     (carpeta/'RESUMEN_RECURSOS_VISUALES.txt').write_text(
         f'Recursos visuales: {len(fotos)}\nFotografías reales de Wikimedia: {sum(1 for c in creditos if c.get("url_original"))}\nDiagramas e ilustraciones: 0\nObjetivo editorial: {IMAGENES_MINIMAS}\n'
         + ('ADVERTENCIA: Revisar variedad visual y relevancia temática antes de publicar.\n' if len(fotos)<IMAGENES_MINIMAS else 'Cantidad objetivo alcanzada.\n'),
@@ -2989,7 +3019,7 @@ def producir_episodio(episodio,historial):
                'con privacidad private para revisar un borrador.')
         (carpeta/'AVISO_PUBLICACION_BLOQUEADA.txt').write_text(aviso+'\n',encoding='utf-8')
         print(aviso,flush=True)
-        raise RuntimeError(aviso)
+        raise EpisodioRecuperable(aviso)
     thumb=miniatura(caso,fotos,carpeta)
     (carpeta/'episodio.json').write_text(json.dumps(episodio,ensure_ascii=False,indent=2),encoding='utf-8')
     if CREAR_VISTA_PREVIA:
@@ -3058,8 +3088,8 @@ def ejecutar():
                            'fecha_utc':datetime.now(timezone.utc).isoformat()})
             print('  TEMA PENDIENTE (no marcado como publicado):',episodio_id,str(exc)[:330],flush=True)
             if not AERO_CAMBIAR_TEMA_SI_FALLA:break
-        # Errores de publicación, imágenes, TTS y subida no se capturan aquí:
-        # pueden representar cargas parciales y requieren revisión, no duplicados.
+        # Fallos documentales y visuales son recuperables antes de TTS/subida.
+        # Errores posteriores pueden producir cargas parciales y NO se reintentan.
     OUTPUT_BASE.mkdir(parents=True,exist_ok=True)
     (OUTPUT_BASE/'ULTIMO_INFORME_EJECUCION.json').write_text(json.dumps({
         'fecha_utc':datetime.now(timezone.utc).isoformat(),
@@ -3099,7 +3129,17 @@ def prueba_interna():
     assert _aero_documento_relevante(meteorologia,sistema)==0
     assert _aero_documento_relevante(('Aircraft electrical power distribution and electrical system generator. '*50),sistema)>0
     assert not _aero_fragmentos(meteorologia,inspeccion)
-    print('OK: 100 temas, Lorenzo, NM, relevancia temática y prevención de caché contaminada')
+    rodaje=dict(CASOS['atc_02'],_episodio={'caso_id':'atc_02'})
+    assert evaluar_relevancia_foto(rodaje,'File:Airport ATC Control Tower.jpg',{},'airport taxiway') == (0, [])
+    assert evaluar_relevancia_foto(rodaje,'File:Airbus A320 taxiing at airport.jpg',{},'aircraft taxiing')[0] > 0
+    assert len(_consultas_fotos(rodaje)) >= 10
+    try:
+        _validar_titulo_youtube({'titulo_youtube':'¿Por qué el rodaje seguro depende de los videos de la FAA?'},
+                                dict(rodaje,_titulo_caso='Qué es el rodaje en un aeropuerto'))
+        raise AssertionError('Título sobre videos de FAA debería rechazarse')
+    except ValueError:
+        pass
+    print('OK: 100 temas, Lorenzo, NM, fuentes, fotos de rodaje y títulos orientados al tema')
 
 if __name__=='__main__':
     if '--self-test' in sys.argv:
