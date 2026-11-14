@@ -19,5 +19,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=EbkFmfxnPLI",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/atc_10_20261114_020131_900341/AEROFACTUM.mp4"
+  },
+  {
+    "episodio": "ops_08",
+    "caso": "ops_08",
+    "titulo": "¿Por qué una checklist salva vuelos cuando el tiempo se vuelve crítico?",
+    "fecha_utc": "2026-11-14T12:56:12.196954+00:00",
+    "youtube_id": "Esg93RXe724",
+    "youtube_url": "https://www.youtube.com/watch?v=Esg93RXe724",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/ops_08_20261114_125243_589360/AEROFACTUM.mp4"
   }
 ]
