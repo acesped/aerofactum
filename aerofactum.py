@@ -144,6 +144,10 @@ def _tokens_tema(caso):
         'atc_05':{'runway selection','runway in use','active runway',
                   'runway use','crosswind','tailwind','wind','controller-in-charge',
                   'runway'},
+        'ops_09':{'departure briefing','takeoff briefing','take-off briefing',
+                  'preflight briefing','flight crew briefing','takeoff threats',
+                  'pilot flying','pilot monitoring','departure procedure',
+                  'briefing de salida','briefing de despegue'},
         'safe_10':{'go-around','go around','missed approach','rejected landing',
                    'stabilized approach','stabilised approach','approach','landing','goarounds'},
         'future_05':{'composite','composites','advanced composite materials',
@@ -176,6 +180,20 @@ def _relevancia_documento(texto, caso):
                     r'\bavi[oó]n\b', r'\baeron[aá]utic\w*\b')
         if not any(re.search(clave, t, re.I) for clave in contexto):
             return 0
+    if tema_id == 'ops_09':
+        # Evita aceptar portadas, catálogos, buscadores de vuelos y documentación
+        # sobre aerolíneas que no explique el briefing de salida en cabina.
+        procedimientos=(r'\bdeparture briefing\b',r'\btake[ -]?off briefing\b',
+                        r'\bflight crew briefing\b',r'\bpreflight briefing\b',
+                        r'\bbriefing de (?:salida|despegue)\b')
+        if not any(re.search(p,t,re.I) for p in procedimientos):
+            return 0
+        contexto=(r'\bcrew\b',r'\bpilot\b',r'\bflight deck\b',
+                  r'\bflight management\b',r'\brunway\b',
+                  r'\bdeparture\b',r'\bthreat\b',r'\bcabina\b')
+        if not any(re.search(p,t,re.I) for p in contexto):
+            return 0
+        return max(2,len(coincidencias))
     if tema_id == 'fin_05':
         # El nombre 'jet' aislado no demuestra costes de combustible.
         # Exigir coocurrencia de costes/finanzas y combustible/aerolíneas.
@@ -302,6 +320,13 @@ def _rutas_documentacion_oficial(caso):
     tema_id=caso.get('_episodio',{}).get('caso_id',caso.get('id',''))
     phak='https://www.faa.gov/regulationspolicies/handbooksmanuals/aviation/phak/'
     rutas={
+      'ops_09':[
+        ('FAA: Flight Crew Briefings — Takeoff Briefing y Departure Briefing',
+         'https://www.faa.gov/media/34621'),
+        ('FAA: Training Standardization Working Group — Crew Briefings',
+         'https://www.faa.gov/sites/faa.gov/files/ARAC-TSWG-Recommendation-Report.pdf'),
+        ('FAA: Airplane Flying Handbook — Takeoffs and Departure Climbs',
+         'https://www.faa.gov/regulations_policies/handbooks_manuals/aviation/airplane_handbook')],
       'fin_05':[
         ('IATA: Fuel costs, aviation economics and profitability 2026',
          'https://www.iata.org/en/pressroom/2026-releases/06-07-middle-east-disruptions-high-fuel-prices-halve-airline-industry-profitability/'),
@@ -514,7 +539,16 @@ def _openrouter_chat(prompt, *, busqueda=False):
     if isinstance(content,list):
         content='\n'.join(str(x.get('text','')) for x in content if isinstance(x,dict))
     if not str(content).strip():
-        raise RuntimeError('OpenRouter devolvió contenido vacío')
+        eleccion=choices[0]
+        uso=data.get('usage') or {}
+        detalles=uso.get('completion_tokens_details') or {}
+        motivo=eleccion.get('finish_reason','desconocido')
+        razonamiento=detalles.get('reasoning_tokens','?')
+        salida=uso.get('completion_tokens','?')
+        raise RuntimeError(
+            f'OpenRouter devolvió contenido vacío (modelo={data.get("model",OPENROUTER_MODELO)}, '
+            f'finish_reason={motivo}, tokens_salida={salida}, tokens_razonamiento={razonamiento}). '
+            'Si finish_reason=length, aumentar max_tokens o elegir otro modelo gratuito.')
     return str(content)
 
 
