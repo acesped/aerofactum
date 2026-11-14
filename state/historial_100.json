@@ -9,5 +9,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=M-hCNSESNmI",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/ops_06_20261113_160458_538578/AEROFACTUM.mp4"
+  },
+  {
+    "episodio": "atc_10",
+    "caso": "atc_10",
+    "titulo": "¿Por qué cambia la ruta de vuelo cuando el espacio aéreo se reconfigura por una TFR?",
+    "fecha_utc": "2026-11-14T02:03:36.564148+00:00",
+    "youtube_id": "EbkFmfxnPLI",
+    "youtube_url": "https://www.youtube.com/watch?v=EbkFmfxnPLI",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/atc_10_20261114_020131_900341/AEROFACTUM.mp4"
   }
 ]
