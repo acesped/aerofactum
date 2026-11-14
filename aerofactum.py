@@ -18,7 +18,7 @@ VOZ = 'es-CL-LorenzoNeural'  # voz fija para TODOS los segmentos de narración
 VELOCIDAD = os.getenv('AERO_VELOCIDAD_VOZ', '-5%').strip()  # Lorenzo más pausado; configurable en GitHub Variables
 if not re.fullmatch(r'[+-]?(?:[0-9]|[1-9][0-9]|100)%', VELOCIDAD):
     raise ValueError('AERO_VELOCIDAD_VOZ debe ser porcentaje válido, por ejemplo -5%')
-# Español siempre con Lorenzo; fragmentos terminológicos en inglés con voz nativa.
+# Español siempre con Lorenzo; nunca cambiar la voz para términos en inglés.
 VOZ_INGLES = os.getenv('AERO_VOZ_INGLES', 'en-US-AndrewNeural').strip()
 # La pronunciación inglesa se puede desactivar si se prefiere una sola voz.
 PRONUNCIACION_INGLES = False  # voz única Lorenzo en TODOS los fragmentos
@@ -1762,6 +1762,22 @@ def fragmentar_por_idioma(texto):
             limpios.append(item)
     return limpios or [('es',texto)]
 
+def normalizar_unidades_narracion(texto):
+    """Expande NM/nm como millas náuticas únicamente para la locución.
+
+    No modifica el guion original ni los documentos fuente. Evita la lectura
+    incorrecta como newton metros y respeta límites de palabra (no altera
+    términos como GNMM, nombres ni textos que contengan esas letras).
+    """
+    patron = re.compile(r'(?<!\w)(NM|nm)(?!\w)')
+    def sustituir(coincidencia):
+        prefijo = texto[:coincidencia.start()]
+        # Con una unidad explícitamente precedida por 1, usar singular.
+        es_uno = bool(re.search(r'(?<![\d.,])\b1\s*$', prefijo))
+        return 'milla náutica' if es_uno else 'millas náuticas'
+    return patron.sub(sustituir, str(texto))
+
+
 def generar_voces(plan,carpeta):
     import edge_tts
     async def tarea():
@@ -1775,7 +1791,7 @@ def generar_voces(plan,carpeta):
                 voces_usadas=[]
                 for j,frag in enumerate(fragmentos):
                     idioma,literal=frag[:2]
-                    texto_tts=frag[2] if len(frag)>2 else literal
+                    texto_tts=normalizar_unidades_narracion(frag[2] if len(frag)>2 else literal)
                     voz_actual=VOZ  # Lorenzo en todos los fragmentos
                     voces_usadas.append(idioma)
                     audio=bytearray();marcas_fragmento=[];error_tts=None
