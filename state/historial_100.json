@@ -39,5 +39,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=2QNgMdB-BSY",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/nav_02_20261114_184724_906513/AEROFACTUM.mp4"
+  },
+  {
+    "episodio": "motor_02",
+    "caso": "motor_02",
+    "titulo": "¿Por qué un compresor necesita tantas etapas para comprimir el aire 10 veces?",
+    "fecha_utc": "2026-11-15T19:31:26.403646+00:00",
+    "youtube_id": "QV8fAeftWvg",
+    "youtube_url": "https://www.youtube.com/watch?v=QV8fAeftWvg",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/motor_02_20261115_192737_607325/AEROFACTUM.mp4"
   }
 ]
