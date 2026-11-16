@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 5.4 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 5.5 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
@@ -40,6 +40,11 @@ AERO_IA_MODO = os.getenv('AERO_IA_MODO', 'auto').strip().lower()
 GEMINI_MODELO = os.getenv('GEMINI_MODELO', 'gemini-3.8-flash')
 GROQ_MODELO = os.getenv('GROQ_MODELO', 'openai/gpt-oss-120b')
 OPENROUTER_MODELO = os.getenv('OPENROUTER_MODELO', 'openrouter/free').strip()
+# Evitar que los modelos reasoning consuman toda la salida antes del JSON.
+AERO_OPENROUTER_RAZONAMIENTO = os.getenv('AERO_OPENROUTER_RAZONAMIENTO', 'minimal').strip().lower()
+if AERO_OPENROUTER_RAZONAMIENTO not in ('none','minimal','low','medium'):
+    raise ValueError('AERO_OPENROUTER_RAZONAMIENTO: none, minimal, low o medium')
+AERO_OPENROUTER_MAX_TOKENS = max(4000, min(16000, int(os.getenv('AERO_OPENROUTER_MAX_TOKENS', '11000'))))
 # La búsqueda web OpenRouter puede generar cargos; habilitar solo con consentimiento explícito.
 AERO_OPENROUTER_WEB_SEARCH = os.getenv('AERO_OPENROUTER_WEB_SEARCH', 'false').strip().lower() == 'true'
 AERO_IA_MIN_FUENTES = max(1, int(os.getenv('AERO_IA_MIN_FUENTES', '1')))
@@ -450,10 +455,15 @@ def _descubrir_fuentes_groq(caso):
     return [(url,'Groq browser_search') for url in _enlaces_de_texto_investigado(texto)]
 
 
-def _openrouter_chat(prompt, *, busqueda=False):
-    """OpenRouter Chat Completions. Usa búsqueda web solo con autorización expresa.
+class OpenRouterSalidaAgotada(RuntimeError):
+    """La solicitud agotó sus tokens generando razonamiento, no el guion."""
 
-    Las URL descubiertas no se consideran evidencia hasta recuperar el documento.
+
+def _openrouter_chat(prompt, *, busqueda=False, limitar_razonamiento=True):
+    """Chat Completions; controla razonamiento para reservar tokens al JSON.
+
+    No publica ni reutiliza reasoning_details como guion. Las búsquedas web
+    opcionales requieren autorización expresa del usuario.
     """
     import requests
     key=os.getenv('OPENROUTER_API_KEY','').strip()
@@ -462,12 +472,17 @@ def _openrouter_chat(prompt, *, busqueda=False):
         'model':OPENROUTER_MODELO,
         'messages':[
             {'role':'system','content':('Eres un investigador aeronáutico que cita fuentes reales.' if busqueda
-                                        else 'Eres un guionista técnico aeronáutico. Devuelve únicamente JSON válido.')},
+                                        else 'Eres guionista técnico aeronáutico. Devuelve SOLO el JSON solicitado, sin análisis ni markdown.')},
             {'role':'user','content':prompt}],
-        'temperature':0.20 if busqueda else 0.55,
-        'max_tokens':2200 if busqueda else 9500,
+        'temperature':0.20 if busqueda else 0.35,
+        'max_tokens':2200 if busqueda else AERO_OPENROUTER_MAX_TOKENS,
         'stream':False,
     }
+    # OpenRouter contabiliza los tokens de razonamiento dentro de max_tokens.
+    # 'minimal' reserva una mayor parte al texto visible en modelos compatibles.
+    # Un router dinámico puede seleccionar un modelo con razonamiento obligatorio.
+    if not busqueda and limitar_razonamiento:
+        payload['reasoning']={'effort':AERO_OPENROUTER_RAZONAMIENTO}
     if busqueda:
         if not AERO_OPENROUTER_WEB_SEARCH:
             raise RuntimeError('Búsqueda OpenRouter desactivada por posible costo; configurar AERO_OPENROUTER_WEB_SEARCH=true')
@@ -481,20 +496,30 @@ def _openrouter_chat(prompt, *, busqueda=False):
     r=requests.post('https://openrouter.ai/api/v1/chat/completions',
                     headers=headers,json=payload,timeout=(10,AERO_IA_TIMEOUT))
     if not r.ok:
+        # No reintentar automáticamente con configuraciones que podrían volver
+        # a consumir todos los tokens de salida. Diagnóstico concreto.
         raise RuntimeError(f'OpenRouter HTTP {r.status_code}: {r.text[:350]}')
     data=r.json()
     choices=data.get('choices') or []
     if not choices:
         raise RuntimeError('OpenRouter sin respuestas: '+str(data.get('error') or data.get('provider') or '')[:250])
-    msg=choices[0].get('message') or {}
+    choice=choices[0]
+    msg=choice.get('message') or {}
     content=msg.get('content') or ''
     if isinstance(content,list):
         content='\n'.join(str(x.get('text','')) for x in content if isinstance(x,dict))
+    motivo=choice.get('finish_reason') or '?'
+    uso=data.get('usage') or {}
+    detalle_uso=uso.get('completion_tokens_details') or {}
+    razonamiento=detalle_uso.get('reasoning_tokens')
+    salida=uso.get('completion_tokens')
+    consumido=f' (tokens_salida={salida}, tokens_razonamiento={razonamiento})'
     if not str(content).strip():
-        motivo=choices[0].get('finish_reason')
-        detalle=msg.get('refusal') or msg.get('reasoning_details') or data.get('error') or ''
-        raise RuntimeError('OpenRouter devolvió contenido vacío (finish_reason='+str(motivo)+
-                           ', error='+str(detalle)[:180]+')')
+        if motivo=='length':
+            raise OpenRouterSalidaAgotada('OpenRouter agotó max_tokens sin entregar guion JSON'+consumido)
+        raise RuntimeError('OpenRouter devolvió contenido vacío (finish_reason='+str(motivo)+')'+consumido)
+    if motivo=='length':
+        raise OpenRouterSalidaAgotada('OpenRouter entregó respuesta truncada antes de cerrar JSON'+consumido)
     return str(content)
 
 
@@ -1520,8 +1545,18 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                 mensaje=str(e)[:550]
                 errores.append(motor+f' intento {intento}: '+mensaje)
                 print('  Motor IA no disponible/guion rechazado:',motor,mensaje[:240],flush=True)
-                # Un cuerpo vacío puede ser transitorio en openrouter/free: se reintenta
-                # una sola vez, sin abandonar todo el proveedor al primer fallo.
+                # Si los tokens se consumen razonando, cambiar la estrategia
+                # del siguiente intento; nunca usar razonamiento como guion.
+                if motor=='openrouter' and isinstance(e,OpenRouterSalidaAgotada):
+                    if intento==1:
+                        print('  OpenRouter: salida consumida en razonamiento. Segundo intento con instrucción breve y control de tokens.',flush=True)
+                        prompt_motor=prompt + '\nResponde inmediatamente con el objeto JSON completo, sin análisis, sin pasos previos ni explicaciones.'
+                        continue
+                    _AERO_IA_INHABILITADOS[motor]=mensaje[:350]
+                    print('  OpenRouter: salida agotada dos veces, suspendido para evitar más consumo.',flush=True)
+                    break
+                # Un cuerpo vacío puede ser transitorio en openrouter/free:
+                # reintentar una sola vez, sin convertir razonamiento en evidencia.
                 if motor=='openrouter' and 'contenido vacío' in mensaje.lower() and intento==2:
                     _AERO_IA_INHABILITADOS[motor]=mensaje[:350]
                     print('  OpenRouter: dos respuestas vacías, suspendido para esta ejecución.',flush=True)
