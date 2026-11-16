@@ -59,5 +59,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=2-z7eoAP3tM",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/ops_10_20261116_124109_367092/AEROFACTUM.mp4"
+  },
+  {
+    "episodio": "fin_01",
+    "caso": "fin_01",
+    "titulo": "¿Por qué volar cuesta tanto cuando el combustible sube y la flota envejece?",
+    "fecha_utc": "2026-11-16T19:05:39.082638+00:00",
+    "youtube_id": "Rsq3eiNQ-Ig",
+    "youtube_url": "https://www.youtube.com/watch?v=Rsq3eiNQ-Ig",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/fin_01_20261116_190356_321156/AEROFACTUM.mp4"
   }
 ]
