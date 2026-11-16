@@ -49,5 +49,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=QV8fAeftWvg",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/motor_02_20261115_192737_607325/AEROFACTUM.mp4"
+  },
+  {
+    "episodio": "ops_10",
+    "caso": "ops_10",
+    "titulo": "¿Por qué una aproximación estabilizada se aprecia desde el aire y no solo al tocar la pista?",
+    "fecha_utc": "2026-11-16T12:45:06.459777+00:00",
+    "youtube_id": "2-z7eoAP3tM",
+    "youtube_url": "https://www.youtube.com/watch?v=2-z7eoAP3tM",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/ops_10_20261116_124109_367092/AEROFACTUM.mp4"
   }
 ]
