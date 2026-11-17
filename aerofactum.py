@@ -75,7 +75,7 @@ AERO_PERMITIR_CAMBIO_TEMA_EXPLICITO = os.getenv('AERO_PERMITIR_CAMBIO_TEMA_EXPLI
 AERO_IA_MIN_DATOS = max(AERO_IA_MIN_DATOS,AERO_MIN_HECHOS_VERIFICABLES)
 # Banda sonora cinematográfica original. Sin servicios externos ni bibliotecas musicales.
 # Volumen en escala lineal (0.045 equivale aproximadamente a -27 dBFS de pico para el pad).
-MUSICA_VOLUMEN = max(0.0, min(0.20, float(os.getenv('AERO_MUSICA_VOLUMEN', '0.075'))))
+MUSICA_VOLUMEN = max(0.0, min(0.20, float(os.getenv('AERO_MUSICA_VOLUMEN', '0.095'))))
 MUSICA_TEMPO = max(60, min(110, int(os.getenv('AERO_MUSICA_BPM', '76'))))
 MUSICA_DUCKING = max(0.20, min(1.0, float(os.getenv('AERO_MUSICA_DUCKING', '0.55'))))
 
