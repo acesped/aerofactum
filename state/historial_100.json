@@ -79,5 +79,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=HTD4Lgp5dC8",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/nav_03_20261117_110052_266327/AEROFACTUM.mp4"
+  },
+  {
+    "episodio": "ops_01",
+    "caso": "ops_01",
+    "titulo": "Qué significa V1: ¿qué debe comprender un piloto?",
+    "fecha_utc": "2026-11-17T12:28:02.470137+00:00",
+    "youtube_id": "49jzw7TZLTI",
+    "youtube_url": "https://www.youtube.com/watch?v=49jzw7TZLTI",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/ops_01_20261117_122602_910614/AEROFACTUM.mp4"
   }
 ]
