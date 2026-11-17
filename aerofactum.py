@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from datetime import datetime, timezone
 
 # ==================== CONFIGURACIÓN EDITABLE ====================
-NICHO = "Historias de la Aviación"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
+NICHO = "Historias de Terror"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
 TEMA = os.getenv('AERO_TEMA', 'aleatorio')       # caso específico o 'aleatorio'; por defecto no repite episodios
 VOZ = 'es-CL-LorenzoNeural'  # voz fija para TODOS los segmentos de narración
 VELOCIDAD = os.getenv('AERO_VELOCIDAD_VOZ', '-5%').strip()  # Lorenzo más pausado; configurable en GitHub Variables
@@ -1446,7 +1446,7 @@ def _validar_guion_ia(datos,documentos,caso):
             raise ValueError(f'Cita del hecho no localizada literalmente en fuente {sid}.')
         referencias.add(sid)
     bloques=datos.get('bloques')
-    tipos=['gancho','pregunta','contexto','pista','analisis','evidencia','aplicacion','conclusion']
+    tipos=['gancho','pregunta','contexto','pista','analisis','desarrollo','aplicacion','conclusion']
     if not isinstance(bloques,list) or [b.get('tipo') for b in bloques if isinstance(b,dict)]!=tipos:
         raise ValueError('El guion IA requiere ocho bloques en orden: '+', '.join(tipos))
     frases=[]; total=0
@@ -1459,6 +1459,9 @@ def _validar_guion_ia(datos,documentos,caso):
         if len(palabras)<14 or len(palabras)>105:
             raise ValueError('Bloque '+b['tipo']+' demasiado corto/largo ('+str(len(palabras))+' palabras).')
         norm=_normalizar_evidencia(txt)
+        # Datos de verificación internos nunca deben escucharse en la narración.
+        if re.search(r'\b(?:hecho|evidencia|pista)\s*(?:n[uú]mero\s*)?\d+\b|\b(?:fuente\s+F\d+|cita\s+C\d+)\b', txt, re.I):
+            raise ValueError('El guion está enumerando hechos o citas de verificación en la locución.')
         if any(x in norm for x in prohibidas):raise ValueError('Guion con frase genérica o advertencia eliminada.')
         frases.append(norm)
     if not 235<=total<=490:
@@ -1637,11 +1640,13 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
          'Usa EXCLUSIVAMENTE hechos sustentables en las fuentes incluidas; no inventes cifras, fechas, citas o normativa.',
          'Si las fuentes hablan de algo tangencial, delimita con honestidad el alcance; no extrapoles.',
          'Incluye entre 3 y 6 hechos_con_evidencia: {fuente_id, afirmacion, cita_id}. Elige cita_id C1, C2, etc. SOLO de citas_verificadas_para_elegir; puedes utilizar cita_textual exacta solo cuando aparezca literalmente en texto_fuente. No reformules las citas.',
-         'Escribe ocho bloques en orden EXACTO: gancho,pregunta,contexto,pista,analisis,evidencia,aplicacion,conclusion.',
+         'hechos_con_evidencia es un campo privado de validación: NO enumeres los hechos, no digas «hecho número», «evidencia», «fuente F1», «cita C1», «según la fuente», «pista número» ni introduzcas secciones de hechos durante la locución.',
+         'Los ocho bloques deben sonar como un relato fluido e inmersivo, sin encabezados narrados ni listas de hechos. Para ficción, relata la historia como ficción y no como acontecimiento real.',
+         'Escribe ocho bloques en orden EXACTO: gancho,pregunta,contexto,pista,analisis,desarrollo,aplicacion,conclusion.',
          'Cada bloque: {tipo,texto}; intenta 35 a 55 palabras, máximo 105. Total de ocho bloques entre 235 y 490 palabras.',
          'Debes aportar al menos tres aprendizajes específicos y un ejemplo explicado sin inventar incidentes.',
          'La primera escena abre DIRECTAMENTE con el hecho o la situación concreta más intrigante, sin saludo ni presentación del canal.',
-         'En los ocho bloques mantén progresión: gancho, pregunta central, contexto mínimo, pista, complicación, evidencia, aplicación/revelación, cierre satisfactorio.',
+         'En los ocho bloques mantén progresión: gancho, pregunta central, contexto mínimo, pista, complicación, desarrollo narrativo, aplicación/revelación, cierre satisfactorio.',
          'Al menos cada dos escenas aporta información NUEVA o resuelve una duda específica; no alargues artificialmente la historia.',
          'En ficción literaria distingue trama de hechos reales; evita transformar una leyenda en un hecho demostrado.',
          'No redundancias, frases vacías, repeticiones de conceptos ni palabras de relleno.',
@@ -1690,7 +1695,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                                 plan[k]=('conclusion',cierre.rstrip(' .')+'. '+pregunta)
                             break
                 # El CTA permanece como escena final sin subtítulos.
-                plan.append(('cta','Si te gustó este video, dale Like y Suscríbete.'))
+                plan.append(('cta','Si te gustó este contenido, dale Like y Suscríbete! Muchas gracias por tu visita y nos vemos en un próximo video!'))
                 caso['titulo']=titulo_ia
                 episodio['titulo']=titulo_ia
                 print('  Título YouTube investigado:',titulo_ia,flush=True)
@@ -2590,10 +2595,10 @@ def plan_guion(caso):
         trozos.append(('pista',entradas[min(i,3)]+' '+p))
     trozos.append(('hipotesis','Llegados a este punto conviene preguntarse qué explicación puede acomodar todas las pistas sin exigir fenómenos inventados. La hipótesis más llamativa no siempre es la que tiene mejores pruebas. Una investigación rigurosa distingue entre coincidencia, inferencia y observación directa.'))
     trozos.append(('revelacion',caso['giro']))
-    trozos.append(('evidencia','Repasemos lo que sí puede comprobarse. '+' '.join('Pista número '+str(i+1)+': '+x+'.' for i,x in enumerate(caso['hechos']))))
-    trozos.append(('significado',caso['importancia']))
+    trozos.append(('desarrollo',caso['importancia']))
+    trozos.append(('significado',caso['cierre']))
     trozos.append(('conclusion',caso['cierre']+' ¿Qué otra pregunta aeronáutica te gustaría investigar? Te leo en los comentarios.'))
-    trozos.append(('cta','Si te gustó este video, dale Like y Suscríbete.'))
+    trozos.append(('cta','Si te gustó este contenido, dale Like y Suscríbete! Muchas gracias por tu visita y nos vemos en un próximo video!'))
     return trozos
 
 # ======================== NARRACIÓN TTS ==========================
@@ -4301,6 +4306,8 @@ def ejecutar():
 
 def prueba_interna():
     """Pruebas locales sin HTTP, credenciales, imagen ni publicación."""
+    assert "'evidencia','aplicacion'" not in __import__('inspect').getsource(_validar_guion_ia)
+    assert not any('Repasemos lo que sí puede comprobarse' in texto for _,texto in plan_guion(CASOS['motor_07']))
     assert len(CATALOGO_AERONAUTICO)==100  # catálogo aeronáutico original se conserva
     assert VOZ=='es-CL-LorenzoNeural' and PRONUNCIACION_INGLES is False
     assert normalizar_unidades_narracion('1 NM y 120 nm')=='1 milla náutica y 120 millas náuticas'
