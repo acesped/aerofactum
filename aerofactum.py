@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 5.6 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM UNIVERSAL 6.0 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música cinematográfica original sintetizada con Python.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 from datetime import datetime, timezone
 
 # ==================== CONFIGURACIÓN EDITABLE ====================
+NICHO = "Aviación"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
 TEMA = os.getenv('AERO_TEMA', 'aleatorio')       # caso específico o 'aleatorio'; por defecto no repite episodios
 VOZ = 'es-CL-LorenzoNeural'  # voz fija para TODOS los segmentos de narración
 VELOCIDAD = os.getenv('AERO_VELOCIDAD_VOZ', '-5%').strip()  # Lorenzo más pausado; configurable en GitHub Variables
@@ -1480,7 +1481,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
             if item.get('titulo'):historial_textos.append(item['titulo'])
     except Exception:pass
     instruccion={
-       'tarea':'Redacta un guion ORIGINAL de divulgación aeronáutica en ESPAÑOL, nada de plantillas.',
+       'tarea':f'Redacta un guion ORIGINAL de divulgación sobre {NICHO} en ESPAÑOL, nada de plantillas.',
        'tema':caso['titulo'], 'categoria':caso['categoria'],
        'idea_de_partida_no_verificada':caso['contexto'],
        'titulos_previos_para_no_repetir':historial_textos,
@@ -1489,7 +1490,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
        'citas_verificadas_para_elegir':citas_preseleccionadas,
        'normas':[ 'Devuelve un objeto JSON, sin markdown ni texto externo.',
          'Incluye titulo_youtube: título en español de 32 a 95 caracteres, conectado con el tema y con un término central reconocible.',
-         'El título debe plantear curiosidad real: una consecuencia, pregunta, contraste o decisión aeronáutica concreta basada en las fuentes.',
+         'El título debe plantear curiosidad real y una pregunta concreta sobre el nicho seleccionado, basada en las fuentes.',
          'Evita títulos genéricos tipo «Qué es ...», grandilocuencia, falsas primicias, promesas vacías y cifras no documentadas.',
          'Usa EXCLUSIVAMENTE hechos sustentables en las fuentes incluidas; no inventes cifras, fechas, citas o normativa.',
          'Si las fuentes hablan de algo tangencial, delimita con honestidad el alcance; no extrapoles.',
@@ -1525,15 +1526,15 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                     # No desperdiciar un guion ya validado por un título defectuoso.
                     # Formular una pregunta neutra a partir del catálogo original.
                     tecnico=caso.get('_titulo_caso',caso['titulo']).strip().rstrip('?')
-                    alternativas=[f'{tecnico}: ¿qué debe comprender un piloto?',
+                    alternativas=[f'{tecnico}: ¿qué conviene comprender de este fenómeno?',
                                   f'{tecnico}: ¿qué hay detrás de este concepto?',
-                                  f'{tecnico}: la explicación aeronáutica']
+                                  f'{tecnico}: una explicación basada en evidencias']
                     titulo_ia=next((t for t in alternativas if 32<=len(t)<=95),None)
                     if titulo_ia is None:raise titulo_error
                     print('  Título IA rechazado; usando título técnico neutral:',titulo_ia,flush=True)
 
                 # El CTA permanece como escena final sin subtítulos.
-                plan.append(('cta','Dale Like y Suscríbete a AEROFACTUM para conocer más sobre aviación.'))
+                plan.append(('cta',f'Dale Like y Suscríbete a AEROFACTUM para descubrir más sobre {NICHO}.'))
                 caso['titulo']=titulo_ia
                 episodio['titulo']=titulo_ia
                 print('  Título YouTube investigado:',titulo_ia,flush=True)
@@ -2384,7 +2385,7 @@ def generar_voces(plan,carpeta):
                 voces_usadas=[]
                 for j,frag in enumerate(fragmentos):
                     idioma,literal=frag[:2]
-                    texto_tts=normalizar_unidades_narracion(frag[2] if len(frag)>2 else literal)
+                    texto_tts=(normalizar_unidades_narracion(frag[2] if len(frag)>2 else literal) if _nicho_es_aviacion() else (frag[2] if len(frag)>2 else literal))
                     voz_actual=VOZ  # Lorenzo en todos los fragmentos
                     voces_usadas.append(idioma)
                     audio=bytearray();marcas_fragmento=[];error_tts=None
@@ -3100,18 +3101,23 @@ def descripcion_youtube(caso, fuentes, creditos):
             )
     categoria = _normalizar_texto_foto(caso.get('categoria', '')).strip().replace(' ', '')
     etiquetas = [
-        'AEROFACTUM', 'Aviacion', 'Aeronautica', 'AviacionCivil',
+        'AEROFACTUM', *(['Aviacion', 'Aeronautica', 'AviacionCivil',
         'IndustriaAeronautica', 'Pilotos', 'Aviones', 'Aeronaves',
         'SeguridadAerea', 'CulturaAeronautica', 'TecnologiaAeronautica',
-        'AprendeAviacion', 'Aviation', 'AviationLovers',
+        'AprendeAviacion', 'Aviation', 'AviationLovers'] if _nicho_es_aviacion()
+        else [x.capitalize() for x in _aero_norm(NICHO).split() if len(x)>2]),
     ]
+    if not _nicho_es_aviacion():
+        etiquetas.extend(['Divulgacion','Aprender','Documental','Cultura','Conocimiento',
+                          'Investigacion','Educacion','Datos','Curiosidades','Explicaciones',
+                          'ConocimientoGeneral'])
     if categoria:
         etiquetas.append(''.join(t.capitalize() for t in categoria.split()))
     etiquetas = list(dict.fromkeys(etiquetas))
     parrafos = [
         f"{caso['titulo']} | AEROFACTUM", '',
-        'Descubre cómo funciona la aviación: tecnología, operaciones y decisiones que hay detrás de cada vuelo.',
-        'Contenido divulgativo. Para operaciones reales consulta la documentación aeronáutica vigente.',
+        f'Descubre información investigada y explicada sobre {NICHO}.',
+        'Contenido de divulgación basado en las fuentes consultadas. Revisa las referencias originales.',
         '', 'FUENTES DE REFERENCIA:',
     ]
     for f in fuentes:
@@ -3207,8 +3213,8 @@ def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,
     titulo=caso['titulo'][:100]
     cuerpo={'snippet':{'title':titulo,
          'description':descripcion_validada,
-         'categoryId':'28','defaultLanguage':'es',
-         'tags':['AEROFACTUM','aviacion','aeronautica',caso['categoria'][:35]]},
+         'categoryId':('28' if _nicho_es_aviacion() else '27'),'defaultLanguage':'es',
+         'tags':['AEROFACTUM', NICHO[:35], caso['categoria'][:35], caso.get('_titulo_caso',caso['titulo'])[:35]]},
          'status':{'privacyStatus':YOUTUBE_PRIVACY,'selfDeclaredMadeForKids':False}}
     # Solo videos nuevos: una vez obtenido el ID, se guarda de inmediato para impedir duplicados.
     solicitud=servicio.videos().insert(part='snippet,status',body=cuerpo,
@@ -3342,6 +3348,298 @@ def producir_episodio(episodio,historial):
     print('\nFINALIZADO\nVideo:',video,'\nMiniatura:',thumb,'\nSubtítulos:',srt)
     return video
 
+# ==================== AEROFACTUM UNIVERSAL 6.0 ====================
+# Contrato de compatibilidad: mismo aerofactum.py, mismo YML, claves OAuth,
+# carpetas de salida, estados y proveedores. La ÚNICA línea editorial es NICHO.
+# El catálogo de 100 temas aeronáuticos permanece intacto si NICHO = "Aviación".
+# Otros nichos se descubren en Wikipedia (catálogo dinámico; títulos NO son hechos).
+# Una búsqueda fallida no genera títulos inventados ni material sin fuentes.
+
+def _nicho_es_aviacion():
+    import unicodedata
+    valor=''.join(c for c in unicodedata.normalize('NFKD',NICHO.casefold())
+                  if not unicodedata.combining(c)).strip()
+    return valor in ('aviacion','aeronautica','aviation')
+
+def _univ_normalizar(valor):
+    import unicodedata
+    s=''.join(c for c in unicodedata.normalize('NFKD',str(valor).casefold())
+              if not unicodedata.combining(c))
+    return re.sub(r'[^a-z0-9]+',' ',s).strip()
+
+def _univ_slug(valor):
+    import unicodedata
+    s=''.join(c for c in unicodedata.normalize('NFKD',str(valor).casefold())
+              if not unicodedata.combining(c))
+    return re.sub(r'[^a-z0-9]+','-',s).strip('-')[:55] or 'general'
+
+def _univ_tokens(texto):
+    stop={'para','como','cual','cuales','sobre','entre','desde','hacia','todo',
+          'historia','concepto','mundo','general','informacion','porque','partir',
+          'where','which','through','about','their','with','from','that','this',
+          'article','categoria','temas','cientifico','ciencia','tipos','sistema',
+          'teoria','funcionamiento','principales','diferentes'}
+    return {w for w in _univ_normalizar(texto).split() if len(w)>=4 and w not in stop}
+
+def _univ_consultas_temas():
+    return [NICHO, NICHO+' tipos', NICHO+' fenómenos',
+            NICHO+' descubrimientos', NICHO+' tecnología', NICHO+' investigación']
+
+def _univ_descubrir_catalogo(session=None):
+    """Usa índice público Wikipedia; IDs basados en páginas, estables por nicho.
+
+    Los títulos recuperados son candidatos y no pruebas; cada episodio debe
+    descargar y validar documentación por separado antes de narrar.
+    """
+    import requests
+    from urllib.parse import quote
+    ses=session or requests.Session()
+    ses.headers.update({'User-Agent':'AEROFACTUM-Universal/6.0 (https://acesped.github.io/aerofactum/; educational video research)'})
+    api='https://es.wikipedia.org/w/api.php'
+    nicho_id=_univ_slug(NICHO)
+    vistos=set();entradas=[];errores=[]
+    for consulta in _univ_consultas_temas():
+        try:
+            r=ses.get(api,params={'action':'query','list':'search','srsearch':consulta,
+                'srnamespace':0,'srlimit':35,'format':'json','formatversion':2},
+                timeout=(8,24))
+            if r.status_code==429:
+                print('  Wikipedia limitó el catálogo (HTTP 429).',flush=True)
+                break
+            r.raise_for_status()
+            items=r.json().get('query',{}).get('search',[])
+        except Exception as e:
+            errores.append(str(e)[:150]);continue
+        for it in items:
+            titulo=re.sub(r'\s+',' ',html.unescape(it.get('title',''))).strip()
+            if not titulo or ':' in titulo or len(titulo)<5 or len(titulo)>90:continue
+            if re.search(r'\b(desambiguaci[oó]n|anexo|lista de|categor[ií]a:)\b',titulo,re.I):continue
+            identificador=it.get('pageid')
+            if not isinstance(identificador,int) or identificador<=0:continue
+            if identificador in vistos:continue
+            vistos.add(identificador)
+            resumen=re.sub('<[^>]+>',' ',it.get('snippet',''))
+            resumen=re.sub(r'\s+',' ',html.unescape(resumen)).strip()
+            # La consulta puede devolver artículos vagamente relacionados; se
+            # requiere coincidencia con el nicho en la sinopsis o el título.
+            relacionados=_univ_tokens(NICHO)
+            corpus=_univ_normalizar(titulo+' '+resumen)
+            if relacionados and not any(t in corpus for t in relacionados):continue
+            from urllib.parse import quote as _quote
+            url='https://es.wikipedia.org/wiki/'+_quote(titulo.replace(' ','_'),safe='()_,-')
+            uid=nicho_id+'-'+str(identificador)
+            entradas.append({'id':uid,'titulo':titulo,'resumen':resumen,'url':url,'pageid':identificador})
+            if len(entradas)>=125:break
+        if len(entradas)>=125:break
+    if not entradas:
+        raise RuntimeError('No fue posible obtener artículos del nicho '+repr(NICHO)+
+                           '. Wikipedia puede estar inaccesible o no tiene resultados; '+str(errores[:2]))
+    # La raíz aparece primero y se conservan IDs estables para la deduplicación.
+    casos={};catalogo={}
+    for it in entradas:
+        titulo=it['titulo'];uid=it['id']
+        consulta_foto=[titulo+' photograph',titulo+' fotografía',
+                        titulo+' image',NICHO+' '+titulo+' photo',titulo]
+        caso={'id':uid,'titulo':titulo,'categoria':NICHO,
+              'estado':'DIVULGACIÓN · DOCUMENTACIÓN POR CONTRASTAR',
+              'pregunta':'¿Cómo se explica '+titulo+'?',
+              'gancho':'Investigamos un aspecto de '+NICHO+': '+titulo,
+              'contexto':it['resumen'] or titulo,
+              'pistas':[titulo], 'hechos':[],
+              'giro':'', 'importancia':'',
+              'cierre':'Una nueva mirada documentada sobre '+NICHO+'.',
+              'fuentes':[('Wikipedia en español: '+titulo,it['url'],[titulo])],
+              'imagenes':consulta_foto,'mini_titulo':titulo.upper(),
+              'mini_subtitulo':NICHO.upper()[:40],
+              '_universal':True,'_wiki_pageid':it['pageid']}
+        casos[uid]=caso
+        catalogo[uid]={'id':uid,'caso_id':uid,'modo':'conocimiento',
+                       'titulo':titulo,'pregunta':caso['pregunta'],
+                       'hecho_clave':caso['contexto']}
+    return casos,catalogo
+
+# Guardar implementaciones aeronáuticas para compatibilidad.
+_UNIV_INVESTIGAR_ORIGINAL = investigar_episodio
+_UNIV_RELEVANCIA_ORIGINAL = _aero_documento_relevante
+_UNIV_ANCLAS_ORIGINAL = _aero_anclas_especificas
+_UNIV_CONSULTAS_FOTOS_ORIGINAL = _consultas_fotos
+_UNIV_FOTO_RELEVANCIA_ORIGINAL = evaluar_relevancia_foto
+_UNIV_CONSULTAS_ORIGINAL = _aero_consultas
+_UNIV_EJECUTAR_ORIGINAL = None  # se asigna después de definir ejecutar
+
+def _aero_anclas_especificas(caso):
+    if not caso.get('_universal'):return _UNIV_ANCLAS_ORIGINAL(caso)
+    # Anclas específicas: el título de artículo, nunca solo "ciencia" o NICHO.
+    palabras=_univ_tokens(caso.get('_titulo_caso',caso['titulo']))
+    return tuple(sorted(palabras,key=len,reverse=True))
+
+def _aero_documento_relevante(texto,caso):
+    if not caso.get('_universal'):return _UNIV_RELEVANCIA_ORIGINAL(texto,caso)
+    t=_univ_normalizar(texto)
+    if len(t)<180:return 0
+    anclas=_aero_anclas_especificas(caso)
+    if not anclas:return 0
+    aciertos=sum(bool(re.search(r'(?<![a-z0-9])'+re.escape(w)+r'(?![a-z0-9])',t)) for w in anclas)
+    # El artículo del asunto debe tratar del concepto central, no solo del nicho.
+    return (3*aciertos) if aciertos>=1 else 0
+
+def _aero_consultas(caso):
+    if not caso.get('_universal'):return _UNIV_CONSULTAS_ORIGINAL(caso)
+    titulo=caso.get('_titulo_caso',caso['titulo'])
+    return [titulo+' '+NICHO, titulo+' investigación',
+            '"'+titulo+'" site:edu', '"'+titulo+'" site:gov',
+            '"'+titulo+'" documentación técnica']
+
+def _consultas_fotos(caso):
+    if not caso.get('_universal'):return _UNIV_CONSULTAS_FOTOS_ORIGINAL(caso)
+    titulo=caso.get('_titulo_caso',caso['titulo'])
+    return list(dict.fromkeys([titulo+' photograph',titulo+' photography',
+         titulo+' foto',titulo+' fotografía',titulo+' image',
+         titulo+' '+NICHO, NICHO+' '+titulo+' photo',titulo]))
+
+def evaluar_relevancia_foto(caso,titulo,metadata,busqueda):
+    if not caso.get('_universal'):
+        return _UNIV_FOTO_RELEVANCIA_ORIGINAL(caso,titulo,metadata,busqueda)
+    # Sin exigencia de aeronaves: evaluar el tema concreto a partir de archivo
+    # y metadatos. Si no aparece el sujeto, descartar antes de descargar.
+    nombre=_normalizar_texto_foto(titulo.replace('File:',''))
+    detalle=_normalizar_texto_foto(' '.join(limpiar_html(metadata.get(k,{}).get('value',''))
+        for k in ('ImageDescription','ObjectName','Categories')))
+    anclas=_univ_tokens(caso.get('_titulo_caso',caso['titulo']))
+    if not anclas:return (0,[])
+    hits_nombre={w for w in anclas if re.search(r'\b'+re.escape(w)+r'\b',nombre)}
+    hits_meta={w for w in anclas if re.search(r'\b'+re.escape(w)+r'\b',detalle)}
+    if not hits_nombre:return (0,[])
+    hits=hits_nombre|hits_meta
+    puntos=8*len(hits_nombre)+2*len(hits_meta)
+    return (puntos,sorted(hits)) if puntos>=8 else (0,[])
+
+def _univ_recuperar_wikipedia(caso,session):
+    """Extrae texto visible de la API oficial Wikimedia sin inventar fuentes.
+
+    URL de Wikipedia identifica la página. Si la API falla, el documento
+    puede intentarse por HTML en el motor de investigación original.
+    """
+    pageid=caso.get('_wiki_pageid')
+    if not pageid:return None
+    try:
+        r=session.get('https://es.wikipedia.org/w/api.php',params={
+            'action':'query','prop':'extracts','explaintext':'1',
+            'exsectionformat':'plain','pageids':str(pageid),
+            'format':'json','formatversion':2},timeout=(8,25),
+            headers={'User-Agent':'AEROFACTUM-Universal/6.0 (educational documentary)'})
+        r.raise_for_status()
+        pages=r.json().get('query',{}).get('pages',[])
+        if not pages or pages[0].get('missing'):return None
+        texto=re.sub(r'\s+',' ',pages[0].get('extract','')).strip()
+        if len(texto)<550:return None
+        fragmento=_aero_fragmentos(texto,caso)
+        score=_aero_documento_relevante(fragmento,caso)
+        if len(fragmento)<450 or not score:return None
+        url=caso['fuentes'][0][1]
+        return {'id':'F1','nombre':'Wikipedia: '+caso['titulo'],'url':url,
+                'fecha_consulta':datetime.now(timezone.utc).isoformat(),
+                'texto':fragmento[:16500],'coincidencias_tema':score,'cache':False}
+    except Exception as e:
+        print('  Fuente Wikipedia API no accesible:',type(e).__name__,str(e)[:120],flush=True)
+        return None
+
+def investigar_episodio(caso,carpeta,session):
+    if not caso.get('_universal'):
+        return _UNIV_INVESTIGAR_ORIGINAL(caso,carpeta,session)
+    # Para nichos nuevos, no consultar fuentes FAA por defecto: wikipedia,
+    # URLs opcionales del usuario y búsqueda filtrada primero.
+    carpeta=Path(carpeta);carpeta.mkdir(parents=True,exist_ok=True)
+    documentos=[];rechazadas=[]
+    inicial=_univ_recuperar_wikipedia(caso,session)
+    if inicial:documentos.append(inicial)
+    for nombre,url in caso.get('fuentes',[]):
+        if documentos:break
+        doc=_aero_descargar_documento(session,url,caso,nombre)
+        if doc:
+            doc['id']='F1';documentos.append(doc)
+    # El usuario puede aportar fuentes específicas con AERO_IA_URLS (YML existente).
+    for url in AERO_IA_URLS.split('|'):
+        if len(documentos)>=max(AERO_MAX_DOCUMENTOS,AERO_MIN_FUENTES):break
+        if not url.strip():continue
+        doc=_aero_descargar_documento(session,url.strip(),caso,'Fuente adicional')
+        if doc and doc['url'] not in {x['url'] for x in documentos}:
+            doc['id']='F'+str(len(documentos)+1);documentos.append(doc)
+    if len(documentos)<AERO_MIN_FUENTES:
+        for url,nombre in _aero_busqueda_rss_filtrada(session,caso):
+            if len(documentos)>=AERO_MIN_FUENTES:break
+            doc=_aero_descargar_documento(session,url,caso,nombre)
+            if doc and doc['url'] not in {x['url'] for x in documentos}:
+                doc['id']='F'+str(len(documentos)+1);documentos.append(doc)
+    reporte={'nicho':NICHO,'tema':caso['titulo'],'id':caso['id'],
+             'fecha_utc':datetime.now(timezone.utc).isoformat(),
+             'fuentes':[{'id':d['id'],'url':d['url'],'nombre':d['nombre'],
+                         'extracto':d['texto'][:750]} for d in documentos],
+             'descartes':rechazadas,'fuentes_minimas':AERO_MIN_FUENTES}
+    (carpeta/'FUENTES_INVESTIGACION.json').write_text(
+         json.dumps(reporte,ensure_ascii=False,indent=2),encoding='utf-8')
+    if len(documentos)<AERO_MIN_FUENTES:
+        raise EpisodioRecuperable(f'No se encontraron {AERO_MIN_FUENTES} fuentes legibles sobre {caso["titulo"]}; no se fabrica un guion.')
+    return documentos
+
+# El prompt y el título de YouTube son contextuales; no alterar la validación
+# literal de citas ni la cantidad mínima de aprendizajes exigidos.
+_UNIV_CITAS_ORIGINAL = _aero_citas_preseleccionadas
+
+def _aero_citas_preseleccionadas(documentos,caso):
+    if not caso.get('_universal'):return _UNIV_CITAS_ORIGINAL(documentos,caso)
+    anclas=_univ_tokens(caso.get('_titulo_caso',caso['titulo']))
+    ranking=[]
+    for doc in documentos[:AERO_IA_MAX_FUENTES_PROMPT]:
+        texto=doc['texto'][:AERO_IA_CARACTERES_FUENTE]
+        frases=re.split(r'(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ0-9])',texto)
+        for frag in frases:
+            f=re.sub(r'\s+',' ',frag).strip()
+            if not 65<=len(f)<=250:continue
+            norm=_univ_normalizar(f)
+            score=sum(3 for w in anclas if w in norm.split())
+            if score:ranking.append((score,doc['id'],f))
+    ranking.sort(key=lambda x:-x[0]);vistos=set();salida=[]
+    for score,fuente,cita in ranking:
+        if cita in vistos:continue
+        vistos.add(cita)
+        salida.append({'cita_id':'C'+str(len(salida)+1),'fuente_id':fuente,'cita_textual':cita})
+        if len(salida)>=AERO_IA_CITAS_PRESELECCIONADAS:break
+    return salida
+
+_UNIV_VALIDAR_TITULO_ORIGINAL = _validar_titulo_youtube
+
+def _validar_titulo_youtube(datos,caso):
+    if not caso.get('_universal'):return _UNIV_VALIDAR_TITULO_ORIGINAL(datos,caso)
+    titulo=re.sub(r'\s+',' ',str(datos.get('titulo_youtube',''))).strip()
+    if not 32<=len(titulo)<=95 or re.search(r'https?://|[#\n\r]',titulo):
+        raise ValueError('Título de YouTube no válido.')
+    tema=_univ_tokens(caso.get('_titulo_caso',caso['titulo']))
+    if tema and not (tema & _univ_tokens(titulo)):
+        raise ValueError('Título no está vinculado al tema.')
+    return titulo
+
+# Los nichos que impliquen salud, finanzas o seguridad requerirán revisión
+# humana antes de difusión pública. El YML actual se prueba en modo private.
+_UNIV_EJECUTAR_IMPL = None
+
+def _univ_activar_catalogo():
+    global CASOS,CATALOGO_AERONAUTICO,ENFOQUE_CATEGORIA,TEMA
+    if _nicho_es_aviacion():return
+    if not NICHO.strip() or len(NICHO)>85:
+        raise ValueError('NICHO debe contener entre 1 y 85 caracteres.')
+    import requests
+    nuevos,episodios=_univ_descubrir_catalogo()
+    CASOS=nuevos;CATALOGO_AERONAUTICO=episodios
+    ENFOQUE_CATEGORIA={NICHO:('Investigación específica y prudente sobre '+NICHO,
+                              '¿Qué indican realmente las fuentes recuperadas?')}
+    # AERO_TEMA del YML puede conservar el ID fijo de un nicho anterior.
+    # Si no existe en el catálogo dinámico, seleccionar aleatorio sin cambiar YML.
+    if TEMA!='aleatorio' and TEMA not in CATALOGO_AERONAUTICO:
+        print('AERO_TEMA no pertenece al catálogo de este nicho; usando selección aleatoria.',flush=True)
+        TEMA='aleatorio'
+    print('NICHO UNIVERSAL:',NICHO,'| temas documentales candidatos:',len(episodios),flush=True)
+
 def ejecutar():
     """Un fallo de fuentes/guion permite probar otro tema, sin repetir publicaciones."""
     if not AERO_IA_DRY_RUN:asegurar_dependencias()
@@ -3350,6 +3648,9 @@ def ejecutar():
     if not 1<=cantidad<=len(CATALOGO_AERONAUTICO):
         raise ValueError('AERO_VIDEOS_POR_EJECUCION fuera del catálogo.')
     if PUBLICAR_EN_YOUTUBE and not AERO_IA_DRY_RUN:
+        if (not _nicho_es_aviacion() and YOUTUBE_PRIVACY!='private' and
+            any(p in _univ_slug(NICHO) for p in ('salud','medicina','farmaco','inversion','finanzas','politica'))):
+            raise RuntimeError('Este nicho requiere revisión editorial humana; usar YOUTUBE_PRIVACY=private.')
         if YOUTUBE_PRIVACY!='private' and not PERMITIR_PUBLICACION_SIN_REVISION:
             raise RuntimeError('Publicación pública requiere ALLOW_UNREVIEWED_PUBLICATION=true.')
         validar_canal_youtube(youtube_servicio())
@@ -3403,7 +3704,7 @@ def ejecutar():
 
 def prueba_interna():
     """Pruebas locales sin HTTP, credenciales, imagen ni publicación."""
-    assert len(CATALOGO_AERONAUTICO)==100
+    assert len(CATALOGO_AERONAUTICO)==100  # catálogo aeronáutico original se conserva
     assert VOZ=='es-CL-LorenzoNeural' and PRONUNCIACION_INGLES is False
     assert normalizar_unidades_narracion('1 NM y 120 nm')=='1 milla náutica y 120 millas náuticas'
     caso=dict(CASOS['motor_07'],_episodio={'caso_id':'motor_07'})
@@ -3450,6 +3751,12 @@ def prueba_interna():
 if __name__=='__main__':
     if '--self-test' in sys.argv:
         prueba_interna()
+        if not _nicho_es_aviacion():
+            ejemplo={'id':'prueba','titulo':'Agujeros negros','_universal':True,'_titulo_caso':'Agujeros negros'}
+            assert _aero_documento_relevante('Los agujeros negros concentran masa en regiones del espacio. '*10,ejemplo)>0
+            assert _aero_documento_relevante('Aeronaves, terminales, aeropuertos y vuelos comerciales. '*10,ejemplo)==0
+            assert evaluar_relevancia_foto(ejemplo,'File:Black holes agujeros negros photo.jpg',{},'agujeros negros')[0]>0
+            print('OK: nicho universal, documentación y recursos visuales sin restricciones aeronáuticas')
     elif '--auth-init' in sys.argv:
         iniciar_oauth_local()
     elif '--check-auth' in sys.argv:
@@ -3461,4 +3768,5 @@ if __name__=='__main__':
             ('Gemini',os.getenv('GEMINI_API_KEY')),('Groq',os.getenv('GROQ_API_KEY')),
             ('OpenRouter',os.getenv('OPENROUTER_API_KEY'))] if e))
     else:
+        _univ_activar_catalogo()
         ejecutar()
