@@ -3381,9 +3381,29 @@ def _univ_tokens(texto):
           'teoria','funcionamiento','principales','diferentes'}
     return {w for w in _univ_normalizar(texto).split() if len(w)>=4 and w not in stop}
 
+def _univ_es_terror():
+    n=_univ_normalizar(NICHO)
+    return 'terror' in n and any(w in n for w in ('historias','relatos','cuentos','leyendas'))
+
 def _univ_consultas_temas():
+    if _univ_es_terror():
+        return ['cuento de fantasmas','relato de terror','leyenda urbana',
+                'leyenda de fantasmas','literatura de terror','casa encantada']
     return [NICHO, NICHO+' tipos', NICHO+' fenómenos',
             NICHO+' descubrimientos', NICHO+' tecnología', NICHO+' investigación']
+
+def _univ_tema_terror_pertinente(titulo,resumen):
+    # Excluye artículos ajenos a relatos de terror.
+    t=_univ_normalizar(titulo+' '+resumen)
+    excluidos=('videojuego','video game','banda musical','album musical',
+               'grupo musical','terrorismo','terrorista','partido politico',
+               'competicion deportiva','pelicula pornografica')
+    if any(x in t for x in excluidos):return False
+    conceptos=('fantasma','espectro','aparicion','embruj','encantad',
+               'terror','horror','miedo','leyenda','misterio','sobrenatural',
+               'cuento','relato','folclor','folklor','creepypasta','mitologia',
+               'espiritu','monstruo','bruj','demonio','gotic')
+    return any(x in t for x in conceptos)
 
 def _univ_descubrir_catalogo(session=None):
     """Usa índice público Wikipedia; IDs basados en páginas, estables por nicho.
@@ -3394,7 +3414,7 @@ def _univ_descubrir_catalogo(session=None):
     import requests
     from urllib.parse import quote
     ses=session or requests.Session()
-    ses.headers.update({'User-Agent':'AEROFACTUM-Universal/6.0 (https://acesped.github.io/aerofactum/; educational video research)'})
+    ses.headers.update({'User-Agent':'AEROFACTUM-Universal/6.1 (https://acesped.github.io/aerofactum/; educational video research)'})
     api='https://es.wikipedia.org/w/api.php'
     nicho_id=_univ_slug(NICHO)
     vistos=set();entradas=[];errores=[]
@@ -3424,7 +3444,10 @@ def _univ_descubrir_catalogo(session=None):
             # requiere coincidencia con el nicho en la sinopsis o el título.
             relacionados=_univ_tokens(NICHO)
             corpus=_univ_normalizar(titulo+' '+resumen)
-            if relacionados and not any(t in corpus for t in relacionados):continue
+            if _univ_es_terror():
+                if not _univ_tema_terror_pertinente(titulo,resumen):continue
+            elif relacionados and not any(t in corpus for t in relacionados):
+                continue
             from urllib.parse import quote as _quote
             url='https://es.wikipedia.org/wiki/'+_quote(titulo.replace(' ','_'),safe='()_,-')
             uid=nicho_id+'-'+str(identificador)
@@ -3527,7 +3550,7 @@ def _univ_recuperar_wikipedia(caso,session):
             'action':'query','prop':'extracts','explaintext':'1',
             'exsectionformat':'plain','pageids':str(pageid),
             'format':'json','formatversion':2},timeout=(8,25),
-            headers={'User-Agent':'AEROFACTUM-Universal/6.0 (educational documentary)'})
+            headers={'User-Agent':'AEROFACTUM-Universal/6.1 (educational documentary)'})
         r.raise_for_status()
         pages=r.json().get('query',{}).get('pages',[])
         if not pages or pages[0].get('missing'):return None
@@ -3553,11 +3576,19 @@ def investigar_episodio(caso,carpeta,session):
     documentos=[];rechazadas=[]
     inicial=_univ_recuperar_wikipedia(caso,session)
     if inicial:documentos.append(inicial)
-    for nombre,url in caso.get('fuentes',[]):
-        if documentos:break
+    # Las fuentes del catálogo universal se representan como
+    # (nombre, url, palabras_clave). No desempaquetar suponiendo dos campos.
+    # Además, ignorar entradas incompletas y registrar fuentes independientes.
+    for entrada in caso.get('fuentes',[]):
+        if len(documentos)>=max(1,AERO_MIN_FUENTES):break
+        if not isinstance(entrada,(tuple,list)) or len(entrada)<2:continue
+        nombre,url=entrada[:2]
+        if not isinstance(url,str) or not url.startswith(('https://','http://')):continue
+        if any(d['url']==url for d in documentos):continue
         doc=_aero_descargar_documento(session,url,caso,nombre)
-        if doc:
-            doc['id']='F1';documentos.append(doc)
+        if doc and doc['url'] not in {d['url'] for d in documentos}:
+            doc['id']='F'+str(len(documentos)+1)
+            documentos.append(doc)
     # El usuario puede aportar fuentes específicas con AERO_IA_URLS (YML existente).
     for url in AERO_IA_URLS.split('|'):
         if len(documentos)>=max(AERO_MAX_DOCUMENTOS,AERO_MIN_FUENTES):break
@@ -3746,6 +3777,27 @@ def prueba_interna():
     _aero_resolver_citas_ia(datos,citas)
     assert datos['hechos_con_evidencia'][0]['cita_textual']==citas[0]['cita_textual']
     assert datos['hechos_con_evidencia'][0]['fuente_id']=='F1'
+    # Regresión universal: una fuente (nombre,url,palabras) no debe generar
+    # ValueError: too many values to unpack (expected 2).
+    if not _nicho_es_aviacion():
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+        prueba={'id':'horror_test','titulo':'Cuento de fantasmas',
+                '_universal':True,'fuentes':[('Wikipedia: Cuento de fantasmas',
+                'https://es.wikipedia.org/wiki/Cuento_de_fantasmas',['fantasmas'])]}
+        doc_prueba={'nombre':'Wikipedia: Cuento de fantasmas',
+                    'url':'https://es.wikipedia.org/wiki/Cuento_de_fantasmas',
+                    'texto':'Un cuento de fantasmas es una narración literaria de ficción. '*15,
+                    'coincidencias_tema':3,'cache':False}
+        def simular_descarga(*args,**kwargs):return dict(doc_prueba)
+        with TemporaryDirectory() as td, \
+             patch.dict(globals(),{'AERO_MIN_FUENTES':1}), \
+             patch.dict(globals(),{'_univ_recuperar_wikipedia':lambda *a:None,
+                                   '_aero_descargar_documento':simular_descarga}):
+            docs=investigar_episodio(prueba,td,None)
+            assert len(docs)==1 and docs[0]['id']=='F1'
+        assert _univ_tema_terror_pertinente('Cuento de fantasmas','Relato de miedo')
+        assert not _univ_tema_terror_pertinente('Urban Terror','Videojuego de disparos')
     print('OK: 100 temas, Lorenzo, NM, fuentes, citas literales, fotos y títulos')
 
 if __name__=='__main__':
