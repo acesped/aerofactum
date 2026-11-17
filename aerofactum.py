@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM 5.5 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM 5.6 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
-Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música original de π.
+Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música cinematográfica original sintetizada con Python.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
 
 Ejecución: python aerofactum.py. En GitHub Actions, ejecución cron automatizada.
@@ -73,7 +73,12 @@ AERO_IA_TIMEOUT = max(25,min(180,int(os.getenv('AERO_IA_TIMEOUT','75'))))
 AERO_IA_CITAS_PRESELECCIONADAS = max(3,min(15,int(os.getenv('AERO_IA_CITAS_PRESELECCIONADAS','9'))))
 AERO_PERMITIR_CAMBIO_TEMA_EXPLICITO = os.getenv('AERO_PERMITIR_CAMBIO_TEMA_EXPLICITO','false').lower() == 'true'
 AERO_IA_MIN_DATOS = max(AERO_IA_MIN_DATOS,AERO_MIN_HECHOS_VERIFICABLES)
-MUSICA_VOLUMEN = 0.065  # más presencia, con limitador final para evitar clipping
+# Banda sonora cinematográfica original. Sin servicios externos ni bibliotecas musicales.
+# Volumen en escala lineal (0.045 equivale aproximadamente a -27 dBFS de pico para el pad).
+MUSICA_VOLUMEN = max(0.0, min(0.20, float(os.getenv('AERO_MUSICA_VOLUMEN', '0.075'))))
+MUSICA_TEMPO = max(60, min(110, int(os.getenv('AERO_MUSICA_BPM', '76'))))
+MUSICA_DUCKING = max(0.20, min(1.0, float(os.getenv('AERO_MUSICA_DUCKING', '0.55'))))
+
 LIKE_PAGE_URL = 'https://commons.wikimedia.org/wiki/File:Facebook_Like_button.svg'
 LIKE_SVG_URL = 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Facebook_Like_button.svg'
 # =================================================================
@@ -2507,24 +2512,133 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             if b>a:f.write(f'Dialogue: 0,{ass_marca(a)},{ass_marca(max(a+.15,b))},Main,,0,0,0,,{ass_escape(txt)}\n')
     return srt,ass
 
-# ======================== MÚSICA π ==============================
-def mezclar_pi(voz,carpeta):
+# ============== MÚSICA CINEMATOGRÁFICA ORIGINAL ==============
+def _acorde_cinematico(t, notas, sr):
+    """Pad cálido de acordes menores: suma de senos suaves sin samples externos."""
     import numpy as np
-    with wave.open(str(voz),'rb') as w:
-        sr=w.getframerate();raw=np.frombuffer(w.readframes(w.getnframes()),dtype='<i2').astype(np.float32)/32768.
-    result=raw.copy();notas={'1':261.63,'2':293.66,'3':329.63,'4':349.23,'5':392.00,'6':440.00,'7':493.88}
-    digitos='1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679'
-    paso=int(sr*.55)
-    for j,desde in enumerate(range(0,len(raw),paso)):
-        hz=notas.get(digitos[j%len(digitos)])
-        if not hz:continue
-        n=min(paso,len(raw)-desde);t=np.arange(n,dtype=np.float32)/sr
-        env=np.minimum(1,t/.04)*np.minimum(1,np.maximum(0,(n/sr-t)/.14))
-        result[desde:desde+n]+=MUSICA_VOLUMEN*env*(np.sin(2*np.pi*hz*t)+.15*np.sin(4*np.pi*hz*t))
-    destino=carpeta/'voz_musica_pi.wav'
-    with wave.open(str(destino),'wb') as f:
-        f.setnchannels(1);f.setsampwidth(2);f.setframerate(sr)
-        f.writeframes((np.clip(result,-.97,.97)*32767).astype('<i2').tobytes())
+    salida=np.zeros_like(t,dtype=np.float64)
+    for indice,hz in enumerate(notas):
+        # Fundamentos con ligeras desafinaciones y armónicos atenuados.
+        fase=2*np.pi*hz*t
+        oscilador=(np.sin(fase)+0.20*np.sin(2*fase+0.3)
+                    +0.055*np.sin(3*fase+0.8))
+        oscilador+=0.12*np.sin(2*np.pi*hz*1.0031*t+indice*1.9)
+        salida+=(0.35 if indice==0 else 0.22)*oscilador
+    # Respiración lenta sin oscilaciones bruscas.
+    return salida*(0.78+0.10*np.sin(2*np.pi*0.085*t))
+
+
+def _bloque_musica_cinematica(desde_muestra, cantidad, sr, duracion, semilla, tempo):
+    """Composición original reproducible con pad, arpegio y pulso sutil.
+
+    La composición depende del identificador del episodio; no usa pistas grabadas,
+    los dígitos de pi ni ninguna API. Se sintetiza por bloques para ahorrar RAM.
+    """
+    import numpy as np
+    t=(desde_muestra+np.arange(cantidad,dtype=np.float64))/sr
+    # Progresiones en re menor, con distintas inversiones según el episodio.
+    progresiones=(
+        ((146.83,220.00,293.66,349.23), (116.54,174.61,233.08,293.66),
+         (130.81,174.61,220.00,349.23), (130.81,196.00,261.63,329.63)),
+        ((146.83,220.00,293.66,349.23), (98.00,146.83,196.00,233.08),
+         (116.54,174.61,233.08,293.66), (110.00,164.81,220.00,277.18)),
+    )
+    acordes=progresiones[semilla % len(progresiones)]
+    compas_seg=4*60.0/tempo
+    acorde_seg=compas_seg*2
+    posicion=t/acorde_seg
+    actual=np.floor(posicion).astype(np.int64)
+    fraccion=posicion-actual
+    # Crossfade armónico en el último 20% de cada sección, sin saltos.
+    mezcla=np.clip((fraccion-0.80)/0.20,0.0,1.0)
+    mezcla=mezcla*mezcla*(3-2*mezcla)
+    pad=np.zeros(cantidad,dtype=np.float64)
+    for k in np.unique(actual):
+        mascara=actual==k
+        acorde=acordes[int(k)%4]
+        siguiente=acordes[(int(k)+1)%4]
+        onda=_acorde_cinematico(t[mascara],acorde,sr)
+        onda2=_acorde_cinematico(t[mascara],siguiente,sr)
+        pad[mascara]=onda*(1-mezcla[mascara])+onda2*mezcla[mascara]
+    # Arpegio puntillista con notas de los acordes, ataque suave y cola amplia.
+    paso=60.0/tempo
+    numero_paso=np.floor(t/paso).astype(np.int64)
+    edad=t-numero_paso*paso
+    arpegio=np.zeros(cantidad,dtype=np.float64)
+    for numero in np.unique(numero_paso):
+        if numero%4==3:  # una pausa regular evita competir con la voz
+            continue
+        mask=numero_paso==numero
+        acorde=acordes[(int(numero)//8)%4]
+        indice=(int(numero)*3+semilla)%len(acorde)
+        frecuencia=acorde[indice]*2
+        local=edad[mask]
+        envelope=(1-np.exp(-local/0.055))*np.exp(-local/0.44)
+        arpegio[mask]=0.20*envelope*(np.sin(2*np.pi*frecuencia*t[mask])+
+                                    0.12*np.sin(4*np.pi*frecuencia*t[mask]))
+    # Pulso grave moderado (uno cada dos tiempos), sin baterías ni samples.
+    periodo=2*paso
+    golpe=t%periodo
+    pulso=0.11*np.exp(-golpe/0.17)*np.sin(2*np.pi*(47+18*np.exp(-golpe/0.08))*golpe)
+    pista=pad*0.73+arpegio+pulso
+    # Entrada y salida gradual para evitar cortes musicales al final.
+    entrada=np.clip(t/2.8,0,1)
+    salida=np.clip((duracion-t)/3.5,0,1)
+    envelope=np.sin(entrada*np.pi/2)**2*np.sin(salida*np.pi/2)**2
+    return (pista*envelope).astype(np.float32)
+
+
+def mezclar_cinematica(voz,carpeta):
+    """Genera banda sonora instrumental original y mezcla voz sin perder claridad.
+
+    Bloques de 4 segundos, atenuación musical bajo narración y control de picos.
+    Respeta los canales, frecuencia de muestreo y duración originales de la voz.
+    """
+    import numpy as np
+    destino=carpeta/'voz_musica_cinematica.wav'
+    # Semilla estable por episodio: cada producción tiene variantes musicales.
+    semilla=int(hashlib.sha256(carpeta.name.encode('utf-8')).hexdigest()[:8],16)
+    with wave.open(str(voz),'rb') as entrada:
+        sr=entrada.getframerate()
+        canales=entrada.getnchannels()
+        ancho=entrada.getsampwidth()
+        if ancho!=2 or canales not in (1,2):
+            raise RuntimeError('Música cinematográfica requiere audio PCM de 16 bits mono o estéreo')
+        muestras=entrada.getnframes()
+        duracion=muestras/sr if sr else 0
+        with wave.open(str(destino),'wb') as salida:
+            salida.setnchannels(canales)
+            salida.setsampwidth(2)
+            salida.setframerate(sr)
+            por_bloque=max(1,int(sr*4))
+            cursor=0
+            # Detector lento de presencia vocal, persistente entre bloques.
+            presencia=0.0
+            while cursor<muestras:
+                n=min(por_bloque,muestras-cursor)
+                origen=np.frombuffer(entrada.readframes(n),dtype='<i2').astype(np.float32)
+                if len(origen)!=n*canales:
+                    raise RuntimeError('Audio de voz truncado al generar música')
+                audio=origen.reshape(n,canales)/32768.0
+                pista=_bloque_musica_cinematica(cursor,n,sr,duracion,semilla,MUSICA_TEMPO)
+                # Ducking con resolución de 50 ms; evita enmascarar consonantes.
+                tam=max(1,int(sr*.05))
+                voz_mono=np.mean(audio,axis=1)
+                ganancia=np.empty(n,dtype=np.float32)
+                for inicio in range(0,n,tam):
+                    final=min(inicio+tam,n)
+                    rms=float(np.sqrt(np.mean(voz_mono[inicio:final]**2)))
+                    objetivo=1.0-(1.0-MUSICA_DUCKING)*np.clip(rms/.035,0,1)
+                    presencia=0.75*presencia+0.25*objetivo
+                    ganancia[inicio:final]=presencia
+                musica=(pista*ganancia*MUSICA_VOLUMEN)[:,None]
+                mezcla=audio+musica
+                # Limitador por bloque sin clipping y sin amplificar silencios.
+                pico=float(np.max(np.abs(mezcla))) if n else 0
+                if pico>0.97:
+                    mezcla*=0.97/pico
+                salida.writeframes((np.clip(mezcla,-.97,.97)*32767).astype('<i2').tobytes())
+                cursor+=n
     return destino
 
 # ======================== TARJETAS E IMÁGENES ====================
@@ -3214,7 +3328,7 @@ def producir_episodio(episodio,historial):
     print('Duración narrada:',round(tiempo_medio_audio(voz)/60,2),'minutos')
     inicio_cta=next((b['inicio'] for b in bloques if b['tipo']=='cta'),None)
     srt,ass=subtitulos(cues,carpeta,inicio_cta=inicio_cta)
-    audio=mezclar_pi(voz,carpeta)
+    audio=mezclar_cinematica(voz,carpeta)
     guardar_metadatos(caso,bloques,fuentes,creditos,carpeta)
     print('Montaje fotográfico con movimiento cinematográfico...')
     base=renderizar_clips(bloques,fotos,caso,carpeta)
