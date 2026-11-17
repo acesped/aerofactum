@@ -149,5 +149,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=xCzkJpq51A0",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/motores-aeronauticos-8775856_20261117_181642_508523/¿Por qué el Rolls-Royce Buzzard de 800 CV solo se vendió cien veces.mp4"
+  },
+  {
+    "episodio": "motores-aeronauticos-3855959",
+    "caso": "motores-aeronauticos-3855959",
+    "titulo": "Continental Motors, Inc.: ¿qué conviene comprender de este fenómeno?",
+    "fecha_utc": "2026-11-17T19:03:23.286640+00:00",
+    "youtube_id": "0U6PyZJmzXE",
+    "youtube_url": "https://www.youtube.com/watch?v=0U6PyZJmzXE",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/motores-aeronauticos-3855959_20261117_190100_846367/Continental Motors, Inc. ¿qué conviene comprender de este fenómeno.mp4"
   }
 ]
