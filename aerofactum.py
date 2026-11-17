@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from datetime import datetime, timezone
 
 # ==================== CONFIGURACIÓN EDITABLE ====================
-NICHO = "Historias de Terror"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
+NICHO = "Industria Aeronáutica"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
 TEMA = os.getenv('AERO_TEMA', 'aleatorio')       # caso específico o 'aleatorio'; por defecto no repite episodios
 VOZ = 'es-CL-LorenzoNeural'  # voz fija para TODOS los segmentos de narración
 VELOCIDAD = os.getenv('AERO_VELOCIDAD_VOZ', '-5%').strip()  # Lorenzo más pausado; configurable en GitHub Variables
@@ -1534,7 +1534,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                     print('  Título IA rechazado; usando título técnico neutral:',titulo_ia,flush=True)
 
                 # El CTA permanece como escena final sin subtítulos.
-                plan.append(('cta',f'Dale Like y Suscríbete a AEROFACTUM para descubrir más sobre {NICHO}.'))
+                plan.append(('cta','Si te gustó este video, dale Like y Suscríbete.'))
                 caso['titulo']=titulo_ia
                 episodio['titulo']=titulo_ia
                 print('  Título YouTube investigado:',titulo_ia,flush=True)
@@ -2365,7 +2365,7 @@ def plan_guion(caso):
     trozos.append(('evidencia','Repasemos lo que sí puede comprobarse. '+' '.join('Pista número '+str(i+1)+': '+x+'.' for i,x in enumerate(caso['hechos']))))
     trozos.append(('significado',caso['importancia']))
     trozos.append(('conclusion',caso['cierre']+' ¿Qué otra pregunta aeronáutica te gustaría investigar? Te leo en los comentarios.'))
-    trozos.append(('cta','Si te gustó este fascinante tema, dale like y suscríbete para seguir recibiendo esta interesante información'))
+    trozos.append(('cta','Si te gustó este video, dale Like y Suscríbete.'))
     return trozos
 
 # ======================== NARRACIÓN TTS ==========================
