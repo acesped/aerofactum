@@ -109,5 +109,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=G7YmLclkFuI",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/industria-aeronautica-655013_20261117_152613_512856/AEROFACTUM.mp4"
+  },
+  {
+    "episodio": "historias-de-terror-8157785",
+    "caso": "historias-de-terror-8157785",
+    "titulo": "¿Por qué el fantasma Teke Teke arrastra su cuerpo y acecha las vías japonesas?",
+    "fecha_utc": "2026-11-17T16:45:28.387180+00:00",
+    "youtube_id": "Ta8BbP5B3Wk",
+    "youtube_url": "https://www.youtube.com/watch?v=Ta8BbP5B3Wk",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/historias-de-terror-8157785_20261117_164348_470595/¿Por qué el fantasma Teke Teke arrastra su cuerpo y acecha las vías japonesas.mp4"
   }
 ]
