@@ -129,5 +129,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=a0Ev9t1fx7Y",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/historias-de-la-aviacion-371975_20261117_170350_320596/¿Cómo Emilio Herrera diseñó el primer traje espacial español y qué legado dejó.mp4"
+  },
+  {
+    "episodio": "historias-de-terror-875370",
+    "caso": "historias-de-terror-875370",
+    "titulo": "¿Por qué la conspiración de \"Paul está muerto\" sigue aterrorizando a los fans?",
+    "fecha_utc": "2026-11-17T17:35:21.672280+00:00",
+    "youtube_id": "X8UNAmtFoH8",
+    "youtube_url": "https://www.youtube.com/watch?v=X8UNAmtFoH8",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/historias-de-terror-875370_20261117_173316_666228/¿Por qué la conspiración de Paul está muerto sigue aterrorizando a los fans.mp4"
   }
 ]
