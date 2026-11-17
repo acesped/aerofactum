@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM UNIVERSAL 6.3 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM UNIVERSAL VIRAL 7.0 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música cinematográfica original sintetizada con Python.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA. Para relatos de terror se admiten ilustraciones originales procedurales debidamente identificadas.
@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from datetime import datetime, timezone
 
 # ==================== CONFIGURACIÓN EDITABLE ====================
-NICHO = "Industria Aeronáutica"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
+NICHO = "Industria Aeronautica"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
 TEMA = os.getenv('AERO_TEMA', 'aleatorio')       # caso específico o 'aleatorio'; por defecto no repite episodios
 VOZ = 'es-CL-LorenzoNeural'  # voz fija para TODOS los segmentos de narración
 VELOCIDAD = os.getenv('AERO_VELOCIDAD_VOZ', '-5%').strip()  # Lorenzo más pausado; configurable en GitHub Variables
@@ -79,6 +79,25 @@ AERO_IA_MIN_DATOS = max(AERO_IA_MIN_DATOS,AERO_MIN_HECHOS_VERIFICABLES)
 MUSICA_VOLUMEN = max(0.0, min(0.20, float(os.getenv('AERO_MUSICA_VOLUMEN', '0.095'))))
 MUSICA_TEMPO = max(60, min(110, int(os.getenv('AERO_MUSICA_BPM', '76'))))
 MUSICA_DUCKING = max(0.20, min(1.0, float(os.getenv('AERO_MUSICA_DUCKING', '0.55'))))
+
+# =================== AEROFACTUM VIRAL 7.0 ===================
+# Un solo archivo, compatible con el workflow anterior. Estas puntuaciones son
+# controles editoriales, no predicciones de viralidad ni métricas de YouTube.
+MODO_VIRAL = os.getenv('AERO_MODO_VIRAL', 'true').lower() == 'true'
+GANCHO_INMEDIATO = os.getenv('AERO_GANCHO_INMEDIATO', 'true').lower() == 'true'
+GUION_NARRATIVO_DINAMICO = os.getenv('AERO_GUION_NARRATIVO', 'true').lower() == 'true'
+IMAGENES_POR_ESCENA = os.getenv('AERO_IMAGENES_POR_ESCENA', 'true').lower() == 'true'
+AERO_VISUALES_OBJETIVO = max(4,min(10,int(os.getenv('AERO_VISUALES_OBJETIVO','8'))))
+TITULOS_CANDIDATOS = max(1,min(3,int(os.getenv('AERO_TITULOS_CANDIDATOS','3'))))
+MINIATURAS_CANDIDATAS = max(1,min(3,int(os.getenv('AERO_MINIATURAS_CANDIDATAS','3'))))
+PREGUNTA_FINAL_ESPECIFICA = os.getenv('AERO_PREGUNTA_FINAL','true').lower() == 'true'
+GENERAR_SHORT_DERIVADO = os.getenv('AERO_GENERAR_SHORT','false').lower() == 'true'
+GENERAR_SERIES_TEMATICAS = os.getenv('AERO_GENERAR_SERIES','true').lower() == 'true'
+ANALIZAR_YOUTUBE_ANALYTICS = os.getenv('AERO_ANALYTICS','false').lower() == 'true'
+HISTORIAL_RENDIMIENTO = os.getenv('AERO_HISTORIAL_RENDIMIENTO','true').lower() == 'true'
+# Los Shorts son archivos locales opcionales; NUNCA se suben solos.
+AERO_SHORT_DURACION_MAX = max(20,min(59,int(os.getenv('AERO_SHORT_DURACION_MAX','55'))))
+
 
 LIKE_PAGE_URL = 'https://commons.wikimedia.org/wiki/File:Facebook_Like_button.svg'
 LIKE_SVG_URL = 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Facebook_Like_button.svg'
@@ -1466,6 +1485,119 @@ def _aero_error_proveedor(motor,mensaje):
         return True
     return False
 
+
+# ----------------- PAQUETE EDITORIAL 7.0 -----------------
+def _viral_variantes_titulos(caso):
+    """Hasta tres propuestas sin agregar afirmaciones nuevas. NO es un test A/B de YouTube."""
+    principal=str(caso.get('titulo','')).strip()[:95]
+    tecnico=str(caso.get('_titulo_caso') or principal).strip().rstrip('.?!')
+    pool=[principal, f'{tecnico}: ¿qué explica realmente esta historia?',
+          f'{tecnico}: los detalles que importan para entenderlo']
+    variantes=[]
+    for titulo in pool:
+        titulo=re.sub(r'\s+',' ',titulo).strip()
+        if len(titulo)>95:titulo=titulo[:95].rsplit(' ',1)[0].strip(' :')
+        if 20<=len(titulo)<=100 and titulo.casefold() not in {v.casefold() for v in variantes}:
+            variantes.append(titulo)
+        if len(variantes)>=TITULOS_CANDIDATOS:break
+    return variantes or [principal]
+
+
+def _viral_pregunta_contextual(caso):
+    """Pregunta editorial para comentarios, no sustituye hechos del guion."""
+    tema=str(caso.get('_titulo_caso') or caso.get('titulo') or 'este tema').strip(' .?!')
+    if _univ_es_terror():
+        return f'¿Qué interpretación darías tú al misterio de {tema}? Te leo en los comentarios.'
+    return f'¿Qué aspecto de {tema} te gustaría explorar con más detalle? Te leo en los comentarios.'
+
+
+def _viral_evaluacion(caso,plan,fotos=None):
+    """Reglas transparentes; nunca se anuncia como probabilidad de viralidad."""
+    escenas=[(t,str(txt)) for t,txt in plan if t!='cta']
+    if not escenas:return {'aprobado':False,'advertencias':['Sin escenas narrativas']}
+    gancho=escenas[0][1].strip()
+    total=sum(len(txt.split()) for _,txt in escenas)
+    advertencias=[]
+    if len(gancho.split())<14:advertencias.append('Gancho inicial demasiado corto')
+    if re.search(r'^(hola|bienvenid[oa]s?|en este video|hoy vamos a|suscr[ií]bete)',gancho,re.I):
+        advertencias.append('Gancho comienza con una introducción genérica')
+    if not 235<=total<=490:advertencias.append('Extensión fuera del rango editorial')
+    if fotos is not None and len(fotos)<AERO_VISUALES_OBJETIVO:
+        advertencias.append('Variedad visual inferior al objetivo editorial')
+    longitud_titulo=len(str(caso.get('titulo','')))
+    if not 32<=longitud_titulo<=95:advertencias.append('Longitud del título fuera del objetivo')
+    return {'version':'7.0','nicho':NICHO,'tema':caso.get('_titulo_caso',caso.get('titulo')),
+            'titulo':caso.get('titulo'),'escenas':len(escenas),'palabras':total,
+            'palabras_gancho':len(gancho.split()),'visuales':len(fotos) if fotos is not None else None,
+            'advertencias':advertencias,'aprobado':not advertencias,
+            'aviso':'Evaluación editorial local; no predice clics, retención ni viralidad.'}
+
+
+def _viral_guardar_paquete(caso,plan,carpeta,fotos=None):
+    carpeta=Path(carpeta)
+    datos=_viral_evaluacion(caso,plan,fotos)
+    datos['titulos_candidatos']=_viral_variantes_titulos(caso)
+    datos['pregunta_interaccion']=_viral_pregunta_contextual(caso) if PREGUNTA_FINAL_ESPECIFICA else ''
+    datos['serie_sugerida']=str(caso.get('categoria') or NICHO) if GENERAR_SERIES_TEMATICAS else ''
+    (carpeta/'PAQUETE_VIRAL.json').write_text(json.dumps(datos,ensure_ascii=False,indent=2),encoding='utf-8')
+    return datos
+
+
+def _viral_miniaturas(caso,fotos,carpeta):
+    """Crea versiones locales para revisión, nunca activa A/B remoto inexistente."""
+    if not MODO_VIRAL or MINIATURAS_CANDIDATAS<=1:return []
+    import copy
+    variantes=[]
+    tecnico=str(caso.get('_titulo_caso') or caso['titulo']).strip().rstrip(' .?!')
+    # Dos composiciones de texto distintas y concisas. Sin agregar hechos.
+    recortado=' '.join(tecnico.split()[:7]).upper()
+    propuestas=[f'LA HISTORIA DE {recortado}'[:54].rstrip(),
+                f'¿QUÉ SABEMOS DE {recortado}?'[:54].rstrip(' ?')+'?']
+    for k,propuesta in enumerate(propuestas[:MINIATURAS_CANDIDATAS-1],start=2):
+        alternativa=dict(caso)
+        alternativa['mini_titulo']=propuesta[:65]
+        alternativa['_variante_miniatura']=k
+        try:
+            variantes.append(str(miniatura(alternativa,fotos,carpeta)))
+        except Exception as ex:
+            print('  Miniatura candidata opcional no disponible:',str(ex)[:160],flush=True)
+    return variantes
+
+
+def _viral_short_local(video,caso,carpeta):
+    """Crea un teaser vertical opcional; no lo publica ni altera el vídeo principal."""
+    if not GENERAR_SHORT_DERIVADO:return None
+    carpeta=Path(carpeta)
+    salida=carpeta/('SHORT_'+nombre_archivo_video(caso,'.mp4'))
+    try:
+        # La fuente es el propio video final: incluye subtítulos, voz y audio.
+        # Es un teaser de apertura, NO se anuncia como historia independiente.
+        vf='crop=608:1080:(in_w-608)/2:0,scale=1080:1920:flags=lanczos,format=yuv420p'
+        ffmpeg(['ffmpeg','-y','-hide_banner','-loglevel','error',
+                '-i',str(video),'-t',str(AERO_SHORT_DURACION_MAX),'-vf',vf,
+                '-c:v','libx264','-preset','veryfast','-crf','23','-c:a','aac',
+                '-b:a','128k','-movflags','+faststart',str(salida)])
+        if not salida.is_file() or salida.stat().st_size<10000:raise RuntimeError('Short vacío')
+        (carpeta/'SHORT_NOTA.txt').write_text(
+            'Teaser vertical del video principal. Revisar encuadre, subtítulos y sentido narrativo antes de publicar. '
+            'No se carga automáticamente a YouTube.\n',encoding='utf-8')
+        return salida
+    except Exception as exc:
+        print('  Short opcional no generado:',str(exc)[:160],flush=True)
+        return None
+
+
+def _viral_analytics_instrucciones(carpeta):
+    """Plantilla de seguimiento: no finge métricas ni requiere nuevos scopes OAuth."""
+    if not HISTORIAL_RENDIMIENTO:return
+    plantilla={'nicho':NICHO,'fecha_creacion_utc':datetime.now(timezone.utc).isoformat(),
+        'youtube_id':None,'vistas':None,'impresiones':None,'ctr_impresiones':None,
+        'duracion_media_segundos':None,'porcentaje_medio_visto':None,
+        'retencion_30s':None,'comentarios':None,'suscriptores_obtenidos':None,
+        'fuentes_trafico':None,'metricas_verificadas':False,
+        'nota':'Valores nulos hasta consultar YouTube Analytics con OAuth analytics.readonly y permisos adecuados.'}
+    (Path(carpeta)/'ANALYTICS_PENDIENTE.json').write_text(json.dumps(plantilla,ensure_ascii=False,indent=2),encoding='utf-8')
+
 def generar_guion_investigado(caso,episodio,documentos,carpeta):
     """Sin plantillas: Gemini -> Groq -> OpenRouter; si fallan, detener."""
     if AERO_IA_MODO not in ('auto','gemini','groq','openrouter'):
@@ -1486,6 +1618,9 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
        'idea_de_partida_no_verificada':caso['contexto'],
        'titulos_previos_para_no_repetir':historial_textos,
        'objetivo_titulo':'Título humano atractivo y fiel a los hechos; distinto del nombre técnico de catálogo.',
+       'objetivo_retencion':'Gancho en el primer enunciado; tensión o curiosidad creciente, recompensa al final sin engañar.',
+       'tipo_narrativo': 'Suspenso literario sin presentar ficción como evidencia histórica' if _univ_es_terror() else 'Divulgación narrativa con revelaciones verificadas',
+       'plan_visual':'Cada bloque debe describir un elemento concreto que pueda ilustrarse con recursos legales y pertinentes.',
        'fuentes_documentales':fuentes_prompt,
        'citas_verificadas_para_elegir':citas_preseleccionadas,
        'normas':[ 'Devuelve un objeto JSON, sin markdown ni texto externo.',
@@ -1498,9 +1633,13 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
          'Escribe ocho bloques en orden EXACTO: gancho,pregunta,contexto,pista,analisis,evidencia,aplicacion,conclusion.',
          'Cada bloque: {tipo,texto}; intenta 35 a 55 palabras, máximo 105. Total de ocho bloques entre 235 y 490 palabras.',
          'Debes aportar al menos tres aprendizajes específicos y un ejemplo explicado sin inventar incidentes.',
-         'La primera escena plantea un dilema, cifra sustentada o situación concreta, diferente a otras aperturas.',
+         'La primera escena abre DIRECTAMENTE con el hecho o la situación concreta más intrigante, sin saludo ni presentación del canal.',
+         'En los ocho bloques mantén progresión: gancho, pregunta central, contexto mínimo, pista, complicación, evidencia, aplicación/revelación, cierre satisfactorio.',
+         'Al menos cada dos escenas aporta información NUEVA o resuelve una duda específica; no alargues artificialmente la historia.',
+         'En ficción literaria distingue trama de hechos reales; evita transformar una leyenda en un hecho demostrado.',
          'No redundancias, frases vacías, repeticiones de conceptos ni palabras de relleno.',
          'No incluyas llamadas a like ni suscripción: se añaden después en una escena independiente.',
+         'El cierre del bloque conclusión puede formular una pregunta específica y natural sobre el caso, nunca una pregunta genérica del canal.',
          'No incluyas advertencias tipo "este contenido es educativo".',
          'Evita escribir "un estudio indica" si no hay informe explícito en las fuentes.',
          'El resultado no debe depender de referencias numéricas que no figuren en el texto recuperado.' ],
@@ -1533,6 +1672,16 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                     if titulo_ia is None:raise titulo_error
                     print('  Título IA rechazado; usando título técnico neutral:',titulo_ia,flush=True)
 
+                # La pregunta de interacción forma parte del relato, antes del CTA
+                # fijo solicitado por el usuario; no afirma hechos no documentados.
+                if MODO_VIRAL and PREGUNTA_FINAL_ESPECIFICA:
+                    for k in range(len(plan)-1,-1,-1):
+                        if plan[k][0]=='conclusion':
+                            cierre=plan[k][1]
+                            pregunta=_viral_pregunta_contextual(caso)
+                            if '?' not in cierre and len((cierre+' '+pregunta).split())<=105:
+                                plan[k]=('conclusion',cierre.rstrip(' .')+'. '+pregunta)
+                            break
                 # El CTA permanece como escena final sin subtítulos.
                 plan.append(('cta','Si te gustó este video, dale Like y Suscríbete.'))
                 caso['titulo']=titulo_ia
@@ -2174,7 +2323,7 @@ def _terror_escenas_procedurales(caso, carpeta, numero):
 def _completar_visual_terror(caso,carpeta,fotos,creditos):
     if not (caso.get('_universal') and _univ_es_terror()):
         return fotos,creditos
-    faltan=max(0,IMAGENES_MINIMAS-len(fotos))
+    faltan=max(0,(AERO_VISUALES_OBJETIVO if MODO_VIRAL and IMAGENES_POR_ESCENA else IMAGENES_MINIMAS)-len(fotos))
     if not faltan:return fotos,creditos
     # Generar en carpeta aparte para no sobrescribir fotos descargadas.
     originales=_terror_escenas_procedurales(caso,Path(carpeta)/'escenas_originales',faltan)
@@ -2829,7 +2978,7 @@ def subtitulo_miniatura(caso,titulo_principal):
         'MANTENIMIENTO Y CERTIFICACIÓN':'QUÉ REVISAN LOS ESPECIALISTAS',
         'AVIACIÓN DEL FUTURO':'LOS RETOS QUE FALTAN SUPERAR',
     }
-    return promesas.get(cat,'EL DATO QUE TODO AVIADOR DEBE CONOCER')
+    return caso.get('_mini_subtitulo') or promesas.get(cat,'EL MISTERIO DETRÁS DE LA HISTORIA' if _univ_es_terror() else 'DESCUBRE LA EXPLICACIÓN')
 
 def portada_font_path():
     """Compatibilidad con código anterior; no se requiere una ruta válida."""
@@ -2881,6 +3030,23 @@ def foto_portada(fotos):
         return fotos[0]
     mejor=max(candidatos,key=lambda x:x[0])
     return mejor[1]
+
+
+def nombre_archivo_video(caso, extension):
+    """Ruta legible derivada del título público, válida en Windows/Linux/macOS."""
+    import unicodedata
+    titulo = unicodedata.normalize('NFC', str(caso.get('titulo', '')).strip())
+    titulo = re.sub(r'[\\/:*?"<>|\x00-\x1f\x7f]', ' ', titulo)
+    titulo = re.sub(r'\s+', ' ', titulo).strip(' .')
+    if not titulo:
+        titulo = 'Video sin titulo'
+    if titulo.upper().split('.')[0] in {
+        'CON', 'PRN', 'AUX', 'NUL', *('COM'+str(i) for i in range(1,10)),
+        *('LPT'+str(i) for i in range(1,10))
+    }:
+        titulo = 'Video ' + titulo
+    titulo = titulo[:120].rstrip(' .')
+    return titulo + extension
 
 def miniatura(caso,fotos,carpeta):
     """Miniatura estilo YouTube: fondo llamativo sin textos, titular enorme en Sans Serif,
@@ -2946,7 +3112,7 @@ def miniatura(caso,fotos,carpeta):
     sub_y=y+block_h+8
     draw.text((x+3,sub_y+3),subtitulo_txt,font=sub_font,fill='#000000',stroke_width=7,stroke_fill='#000000')
     draw.text((x,sub_y),subtitulo_txt,font=sub_font,fill='#FFFFFF',stroke_width=3,stroke_fill='#09111E')
-    destino=carpeta/'miniatura.jpg'
+    destino=carpeta/nombre_archivo_video(caso,('_opcion_'+str(caso['_variante_miniatura']) if caso.get('_variante_miniatura') else '')+'.jpg')
     # YouTube thumbnails: 16:9, 1280x720 y máximo 2 MB (API).
     # El JPG anterior Full HD, quality=96, frecuentemente superaba 2 MB.
     from PIL import ImageOps
@@ -3045,14 +3211,14 @@ def renderizar_clips(bloques,fotos,caso,carpeta):
         objetivo=round((b['inicio']+b['duracion'])*fps)
         frames_escena=max(1,objetivo-acum_frames)
         acum_frames+=frames_escena
-        num_planos=1 if b['tipo']=='cta' else max(1,math.ceil(frames_escena/(fps*11)))
+        num_planos=1 if b['tipo']=='cta' else max(1,math.ceil(frames_escena/(fps*(7 if MODO_VIRAL else 11))))
         cortes=[round(j*frames_escena/num_planos) for j in range(num_planos+1)]
         for plano in range(num_planos):
             frames=cortes[plano+1]-cortes[plano]
             if frames<=0:continue
             if b['tipo']!='cta':
                 # No usar siempre las mismas fotografías para dos planos consecutivos.
-                foto=fotos[(numero+(i//2))%len(fotos)]
+                foto=fotos[(i+plano+numero//max(1,len(fotos)))%len(fotos)] if IMAGENES_POR_ESCENA else fotos[(numero+(i//2))%len(fotos)]
             clip=carpeta/f'clip_{numero:04}.mp4'
             dur=frames/fps
             if b['tipo']=='cta':
@@ -3099,9 +3265,9 @@ def renderizar_clips(bloques,fotos,caso,carpeta):
     ffmpeg(['ffmpeg','-y','-hide_banner','-loglevel','error','-safe','0','-f','concat','-i',str(concat),'-c','copy',str(unido)])
     return unido
 
-def finalizar_video(video,audio,ass,carpeta):
+def finalizar_video(video,audio,ass,carpeta,caso):
     # Escalado FullHD en una sola codificación final; burn-in ASS sobre 1920x1080.
-    salida=carpeta/'AEROFACTUM.mp4';dur=tiempo_medio_audio(audio)
+    salida=carpeta/nombre_archivo_video(caso,'.mp4');dur=tiempo_medio_audio(audio)
     ruta_ass=str(ass.resolve()).replace('\\','/').replace(':','\\:').replace("'","\\'")
     filtro=f'scale=1920:1080:flags=lanczos,tpad=stop_mode=clone:stop_duration=0.4,ass=filename=\'{ruta_ass}\''
     ffmpeg(['ffmpeg','-y','-hide_banner','-loglevel','error','-i',str(video),'-i',str(audio),'-filter_complex',f'[0:v]{filtro}[v]','-map','[v]','-map','1:a:0','-t',f'{dur:.6f}','-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-c:a','aac','-b:a','160k','-movflags','+faststart',str(salida)])
@@ -3251,6 +3417,10 @@ def descripcion_youtube(caso, fuentes, creditos):
     ]
     for f in fuentes:
         parrafos.append(f"- {f.get('nombre', 'Fuente')}: {f.get('url', '')}")
+    if MODO_VIRAL and PREGUNTA_FINAL_ESPECIFICA:
+        parrafos.extend(['',_viral_pregunta_contextual(caso)])
+    if MODO_VIRAL and GENERAR_SERIES_TEMATICAS:
+        parrafos.extend(['',f'Serie temática: {caso.get("categoria", NICHO)}'])
     parrafos += ['', ' '.join('#' + h for h in etiquetas)]
     texto = '\n'.join(parrafos)
     if len(texto) > 4900:
@@ -3268,7 +3438,7 @@ def escribir_registro_publicacion(historial,episodio,caso,video_id,carpeta,estad
                    'titulo':episodio['titulo'],'fecha_utc':datetime.now(timezone.utc).isoformat()}
         datos.append(existente)
     existente.update(youtube_id=video_id, youtube_url='https://www.youtube.com/watch?v='+video_id,
-                     youtube_estado=estado, salida=str(carpeta/'AEROFACTUM.mp4'))
+                     youtube_estado=estado, salida=str(carpeta/nombre_archivo_video(caso,'.mp4')))
     historial.parent.mkdir(parents=True,exist_ok=True)
     temp=historial.with_suffix('.tmp')
     temp.write_text(json.dumps(datos,ensure_ascii=False,indent=2),encoding='utf-8')
@@ -3378,6 +3548,88 @@ def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,
                            ' | '.join(errores))
     return video_id
 
+
+def _viral_consultar_historico_analytics():
+    """Consulta bajo demanda de métricas reales. Requiere refresh token adicional
+    autorizado explícitamente para yt-analytics.readonly; NO usa el scope de
+    publicación del YML para fingir permisos. Nunca modifica el historial de videos.
+    """
+    import requests
+    token=os.getenv('YT_ANALYTICS_REFRESH_TOKEN','').strip()
+    if not token:
+        raise RuntimeError('Para --analytics se requiere YT_ANALYTICS_REFRESH_TOKEN con alcance yt-analytics.readonly. El YML actual no lo incluye.')
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request
+    from datetime import timedelta
+    creds=Credentials(token=None,refresh_token=token,
+        token_uri='https://oauth2.googleapis.com/token',
+        client_id=os.getenv('YT_CLIENT_ID',''),client_secret=os.getenv('YT_CLIENT_SECRET',''),
+        scopes=['https://www.googleapis.com/auth/yt-analytics.readonly'])
+    creds.refresh(Request())
+    ruta=ruta_historial()
+    historial=leer_historial(ruta)
+    hoy=datetime.now(timezone.utc).date()
+    hasta=(hoy-timedelta(days=2)).isoformat()
+    salida=[]
+    sesion=requests.Session()
+    for row in historial[-80:]:
+        video_id=row.get('youtube_id')
+        if not video_id:continue
+        try:
+            fecha=datetime.fromisoformat(str(row.get('fecha_utc','')).replace('Z','+00:00')).date()
+        except Exception:
+            continue
+        inicio=(fecha+timedelta(days=1)).isoformat()
+        if inicio>hasta:continue
+        params={'ids':'channel==MINE','startDate':inicio,'endDate':hasta,
+                'metrics':'views,estimatedMinutesWatched,averageViewDuration,likes,comments,subscribersGained',
+                'filters':'video=='+video_id}
+        respuesta=sesion.get('https://youtubeanalytics.googleapis.com/v2/reports',params=params,
+            headers={'Authorization':'Bearer '+creds.token},timeout=(10,35))
+        if respuesta.status_code in (401,403):
+            raise RuntimeError('Permiso Analytics insuficiente o acceso denegado: '+respuesta.text[:300])
+        respuesta.raise_for_status()
+        js=respuesta.json()
+        heads=[h['name'] for h in js.get('columnHeaders',[])]
+        data=dict(zip(heads,(js.get('rows') or [[]])[0])) if js.get('rows') else {}
+        salida.append({'episodio':row.get('episodio'),'video_id':video_id,'titulo':row.get('titulo'),
+                       'fecha_consulta_utc':datetime.now(timezone.utc).isoformat(),
+                       'metricas':data,'fuente':'YouTube Analytics API v2',
+                       'nota':'La disponibilidad de métricas depende de procesamiento y permisos del canal.'})
+        time.sleep(.15)
+    salida_ruta=OUTPUT_BASE/'ANALYTICS_HISTORICO_REAL.json'
+    salida_ruta.parent.mkdir(parents=True,exist_ok=True)
+    salida_ruta.write_text(json.dumps(salida,ensure_ascii=False,indent=2),encoding='utf-8')
+    print(f'Analytics: {len(salida)} videos consultados; {salida_ruta}',flush=True)
+    return salida
+
+
+def consultar_analytics_verificado(carpeta, youtube_id, credenciales=None):
+    """Consulta real OPCIONAL. Requiere credenciales con youtube.readonly + yt-analytics.readonly.
+
+    El OAuth del YML anterior normalmente NO incluye analytics.readonly: en ese
+    caso se registra el error, sin simular impresiones, retención ni vistas.
+    """
+    if not ANALIZAR_YOUTUBE_ANALYTICS or not youtube_id:return None
+    try:
+        from googleapiclient.discovery import build
+        if credenciales is None:
+            raise RuntimeError('Faltan credenciales OAuth con permiso yt-analytics.readonly')
+        servicio=build('youtubeAnalytics','v2',credentials=credenciales,cache_discovery=False)
+        desde=(datetime.now(timezone.utc).date()).isoformat()
+        # Un video recién publicado no tiene 7 días de métricas:
+        # la consulta se ejecuta manualmente en días posteriores.
+        respuesta=servicio.reports().query(ids='channel==MINE',startDate=desde,
+            endDate=desde,metrics='views,estimatedMinutesWatched,averageViewDuration,likes,comments,subscribersGained',
+            dimensions='video',filters='video=='+youtube_id).execute()
+        (Path(carpeta)/'ANALYTICS_VERIFICADO.json').write_text(
+            json.dumps(respuesta,ensure_ascii=False,indent=2),encoding='utf-8')
+        return respuesta
+    except Exception as exc:
+        (Path(carpeta)/'ANALYTICS_ERROR.txt').write_text(
+            'Analytics no consultado o sin permisos/datos: '+str(exc)[:550],encoding='utf-8')
+        return None
+
 # ====================== METADATOS Y PUBLICACIÓN ===================
 def guardar_metadatos(caso,bloques,fuentes,creditos,carpeta):
     contenido='\n'.join(f"{i+1}. {b['texto']}" for i,b in enumerate(bloques))
@@ -3452,7 +3704,19 @@ def producir_episodio(episodio,historial):
         (carpeta/'AVISO_PUBLICACION_BLOQUEADA.txt').write_text(aviso+'\n',encoding='utf-8')
         print(aviso,flush=True)
         raise EpisodioRecuperable(aviso)
+    if MODO_VIRAL:
+        auditoria=_viral_guardar_paquete(caso,plan,carpeta,fotos)
+        print('  Evaluación editorial:', 'sin alertas' if auditoria['aprobado'] else '; '.join(auditoria['advertencias']),flush=True)
     thumb=miniatura(caso,fotos,carpeta)
+    alternativas_miniaturas=_viral_miniaturas(caso,fotos,carpeta) if MODO_VIRAL else []
+    if alternativas_miniaturas:
+        print('  Miniaturas candidatas locales:',len(alternativas_miniaturas),flush=True)
+        paquete=carpeta/'PAQUETE_VIRAL.json'
+        if paquete.exists():
+            info=json.loads(paquete.read_text(encoding='utf-8'))
+            info['miniaturas_candidatas']=[str(thumb)]+alternativas_miniaturas
+            info['experimento_ab_youtube']='No iniciado: las variantes se guardan para revisión o prueba manual en YouTube Studio.'
+            paquete.write_text(json.dumps(info,ensure_ascii=False,indent=2),encoding='utf-8')
     (carpeta/'episodio.json').write_text(json.dumps(episodio,ensure_ascii=False,indent=2),encoding='utf-8')
     if CREAR_VISTA_PREVIA:
         print('Vista previa:',thumb)
@@ -3465,9 +3729,13 @@ def producir_episodio(episodio,historial):
     srt,ass=subtitulos(cues,carpeta,inicio_cta=inicio_cta)
     audio=mezclar_cinematica(voz,carpeta)
     guardar_metadatos(caso,bloques,fuentes,creditos,carpeta)
+    if MODO_VIRAL:
+        _viral_analytics_instrucciones(carpeta)
     print('Montaje fotográfico con movimiento cinematográfico...')
     base=renderizar_clips(bloques,fotos,caso,carpeta)
-    video=finalizar_video(base,audio,ass,carpeta)
+    video=finalizar_video(base,audio,ass,carpeta,caso)
+    if MODO_VIRAL and GENERAR_SHORT_DERIVADO:
+        _viral_short_local(video,caso,carpeta)
     guardar_drive(carpeta)
     if PUBLICAR_EN_YOUTUBE:
         publicar_youtube(video,thumb,srt,caso,episodio,fuentes,creditos,carpeta,historial)
@@ -3931,7 +4199,7 @@ def prueba_interna():
             with TemporaryDirectory() as td:
                 prueba_arte=dict(prueba,id='terror-test-01')
                 arte,reg=_completar_visual_terror(prueba_arte,td,[],[])
-                assert len(arte)==IMAGENES_MINIMAS and len(reg)==IMAGENES_MINIMAS
+                assert len(arte)==(AERO_VISUALES_OBJETIVO if MODO_VIRAL and IMAGENES_POR_ESCENA else IMAGENES_MINIMAS) and len(reg)==len(arte)
                 assert all(x.exists() for x in arte)
                 assert all(x.get('tipo_recurso')=='ilustracion_procedural' for x in reg)
                 # Regresión: los metadatos de las imágenes procedurales no
@@ -3951,7 +4219,14 @@ def prueba_interna():
                     raise AssertionError('La imagen CC BY-SA sin créditos no fue rechazada')
                 assert len({hashlib.sha256(x.read_bytes()).hexdigest() for x in arte})==len(arte)
                 print('OK: terror con escenas originales distintas, sin fotografías falsas')
-    print('OK: 100 temas, Lorenzo, NM, fuentes, citas literales, fotos y títulos')
+    # Controles de regresión del paquete viral (sin API ni publicación).
+    assert len(_viral_variantes_titulos({'titulo':'¿Por qué ocurre este fenómeno tan extraño?', '_titulo_caso':'El fenómeno extraño'})) >= 1
+    assert 'comentarios' in _viral_pregunta_contextual({'titulo':'Leyendas', '_titulo_caso':'Leyendas'})
+    assert MODO_VIRAL and TITULOS_CANDIDATOS in (1,2,3) and MINIATURAS_CANDIDATAS in (1,2,3)
+    test_qa=_viral_evaluacion({'titulo':'¿Por qué ocurre este fenómeno tan extraño?'}, [('gancho','La puerta del sótano estaba cerrada por dentro y aun así se oyó una voz desde el otro lado.')])
+    assert 'advertencias' in test_qa and test_qa['escenas']==1
+    assert VOZ=='es-CL-LorenzoNeural'
+    print('OK: 100 temas, Lorenzo, NM, fuentes, citas literales, fotos, títulos y auditoría viral')
 
 if __name__=='__main__':
     if '--self-test' in sys.argv:
@@ -3966,6 +4241,8 @@ if __name__=='__main__':
         iniciar_oauth_local()
     elif '--check-auth' in sys.argv:
         validar_canal_youtube(youtube_servicio())
+    elif '--analytics' in sys.argv:
+        _viral_consultar_historico_analytics()
     elif '--check-ia' in sys.argv:
         if not (os.getenv('GEMINI_API_KEY') or os.getenv('GROQ_API_KEY') or os.getenv('OPENROUTER_API_KEY')):
             raise RuntimeError('Configura GEMINI_API_KEY, GROQ_API_KEY u OPENROUTER_API_KEY en GitHub Secrets.')
