@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from datetime import datetime, timezone
 
 # ==================== CONFIGURACIÓN EDITABLE ====================
-NICHO = "Historias de Terror"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
+NICHO = "Motores Aeronáuticos"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
 TEMA = os.getenv('AERO_TEMA', 'aleatorio')       # caso específico o 'aleatorio'; por defecto no repite episodios
 VOZ = 'es-CL-LorenzoNeural'  # voz fija para TODOS los segmentos de narración
 VELOCIDAD = os.getenv('AERO_VELOCIDAD_VOZ', '-5%').strip()  # Lorenzo más pausado; configurable en GitHub Variables
@@ -2266,27 +2266,59 @@ _MOTIVOS_TERROR = {
  'luna': r'luna|noche|oscuridad|cielo|estrella',
 }
 
+# Priorización de objetos visibles frente a palabras atmosféricas. La detección
+# es heurística: no se afirma que una imagen dibujada represente un hecho real.
+_MOTIVOS_TERROR_EXTRA = {
+    'calavera': r'calavera|cr[aá]neo|esqueleto|huesos?',
+    'vela': r'vela|velas|candelabro|llama|cirio',
+    'tumba': r'tumba|sepultura|cementerio|l[aá]pida|ata[uú]d',
+    'ojo': r'ojos?|mirada|pupila|observaba',
+    'mano': r'manos?|dedos?|garra|toc[oó]|agarr[oó]',
+    'telefono': r'tel[eé]fono|llamada|auricular|timbre',
+    'muñeca': r'muñeca|juguete|marioneta',
+    'linterna': r'linterna|farol|l[aá]mpara|antorcha',
+    'cuchillo': r'cuchillo|daga|puñal|hoja afilada',
+    'puente': r'puente|pasarela',
+    'pozo': r'pozo|agujero profundo|fosa',
+    'silla': r'silla|sill[oó]n|asiento',
+    'cuadro': r'cuadro|retrato|pintura|lienzo',
+}
+_MOTIVOS_TERROR.update(_MOTIVOS_TERROR_EXTRA)
+_MOTIVOS_ABSTRACTOS={'luna','persona','casa'}
+
 def _plan_visual_semantico(caso):
-    """Una imagen por escena narrativa; la acción de cada párrafo determina el motivo."""
+    """Cada escena se fundamenta EXCLUSIVAMENTE en sus palabras narradas.
+
+    Evita inventar un libro o un fantasma ante frases abstractas. Para escenas
+    sin objeto dibujable usa una lámina tipográfica con una frase auténtica.
+    """
     plan=caso.get('_plan_visual') or []
-    titulo=str(caso.get('_titulo_caso') or caso.get('titulo') or '')
     escenas=[]
     for indice,(tipo,voz) in enumerate(plan):
         if tipo=='cta':continue
-        texto=str(voz)
-        # Preferir la acción o el objeto mencionado en la escena; el tema
-        # completo es respaldo cuando el párrafo contiene pocos sustantivos.
-        motivos=[m for m,pat in _MOTIVOS_TERROR.items() if re.search(pat,texto,re.I)]
-        if not motivos:
-            motivos=[m for m,pat in _MOTIVOS_TERROR.items() if re.search(pat,titulo,re.I)]
-        if not motivos:motivos=['libro']
-        # Preservar también una segunda señal para diferenciar actos consecutivos.
-        motivo=motivos[0]
-        if len(motivos)>1 and indice%2:motivo=motivos[1]
-        escenas.append({'indice':indice,'tipo':tipo,'texto':texto[:500],
-                        'motivo':motivo,'motivos_detectados':motivos[:6],
-                        'recurso':f'imagen_{indice:02}.jpg'})
+        texto=re.sub(r'\s+',' ',str(voz)).strip()
+        candidatos=[]
+        for motivo,patron in _MOTIVOS_TERROR.items():
+            for m in re.finditer(patron,texto,re.I):
+                # Dar prioridad a objetos exactos; términos atmosféricos son
+                # secundarios aunque aparezcan al principio del párrafo.
+                exactitud=2 if motivo in _MOTIVOS_ABSTRACTOS else 7
+                candidatos.append((exactitud, m.start(), motivo,m.group(0)))
+        candidatos.sort(key=lambda x:(-x[0],x[1],x[2]))
+        motivo=candidatos[0][2] if candidatos else 'texto_contextual'
+        # Frase visible literalmente copiada del texto, nunca generada.
+        primera=re.split(r'(?<=[.!?])\s+',texto,maxsplit=1)[0]
+        palabras=primera.split()
+        extracto=' '.join(palabras[:min(11,len(palabras))])
+        if len(palabras)>11:extracto+='…'
+        escenas.append({'indice':indice,'tipo':tipo,'texto':texto[:700],
+                        'motivo':motivo,
+                        'motivos_detectados':list(dict.fromkeys(c[2] for c in candidatos))[:8],
+                        'coincidencia_literal':candidatos[0][3] if candidatos else '',
+                        'frase_visual':extracto,'recurso':f'imagen_{indice:02}.jpg',
+                        'origen':'texto narrado de esta escena'})
     return escenas
+
 
 def _dibujar_motivo_terror(draw, motivo, w, h, rng):
     """Objeto reconocible, central, ilustrado localmente; sin modelo ni API."""
@@ -2352,6 +2384,50 @@ def _dibujar_motivo_terror(draw, motivo, w, h, rng):
             x=cx+(-1 if k%2 else 1)*(75+k*18);y=cy-245+k*112
             draw.ellipse((x-40,y-60,x+40,y+33),fill=(139,157,163,210))
             draw.ellipse((x+18,y-90,x+48,y-52),fill=(139,157,163,210))
+    elif motivo in ('calavera','ojo','mano','vela','linterna','telefono','muñeca',
+                    'tumba','cuchillo','puente','pozo','silla','cuadro'):
+        # Símbolos figurativos originales con composición dependiente del motivo.
+        if motivo=='calavera':
+            draw.ellipse((cx-170,cy-225,cx+170,cy+125),fill=(190,185,167,255),outline=borde,width=9)
+            for dx in (-75,75):draw.ellipse((cx+dx-50,cy-100,cx+dx+40,cy-5),fill=oscuro)
+            draw.polygon([(cx,cy-35),(cx-36,cy+40),(cx+36,cy+40)],fill=oscuro)
+            draw.rectangle((cx-105,cy+115,cx+105,cy+205),fill=(179,170,154,255),outline=borde,width=6)
+        elif motivo=='ojo':
+            draw.ellipse((cx-335,cy-130,cx+335,cy+145),fill=(180,194,193,255),outline=oro,width=12)
+            draw.ellipse((cx-120,cy-128,cx+120,cy+140),fill=(58,106,122,255))
+            draw.ellipse((cx-48,cy-125,cx+48,cy+138),fill=oscuro)
+        elif motivo=='mano':
+            draw.polygon([(cx-135,cy+230),(cx-175,cy-70),(cx-140,cy-240),(cx-90,cy-55),
+                          (cx-45,cy-310),(cx+5,cy-60),(cx+75,cy-290),(cx+100,cy-30),
+                          (cx+175,cy-170),(cx+160,cy+110),(cx+75,cy+250)],fill=(130,149,156,240),outline=borde)
+        elif motivo in ('vela','linterna'):
+            draw.rectangle((cx-80,cy-110,cx+80,cy+250),fill=(184,170,145,255),outline=oro,width=8)
+            draw.ellipse((cx-75,cy-300,cx+75,cy-105),fill=(231,174,76,230))
+            draw.ellipse((cx-32,cy-260,cx+32,cy-115),fill=(255,235,163,245))
+        elif motivo=='tumba':
+            draw.rounded_rectangle((cx-190,cy-255,cx+190,cy+290),radius=110,
+                 fill=(101,113,126,255),outline=borde,width=12)
+            draw.line((cx-75,cy-40,cx+75,cy-40),fill=oscuro,width=13)
+        elif motivo in ('telefono','muñeca'):
+            draw.rounded_rectangle((cx-155,cy-240,cx+155,cy+245),radius=35,
+                                  fill=(64,70,83,255),outline=oro,width=9)
+            draw.ellipse((cx-75,cy-105,cx+75,cy+65),outline=borde,width=14)
+        elif motivo=='cuchillo':
+            draw.polygon([(cx-35,cy-310),(cx+60,cy+35),(cx-10,cy+125)],fill=(183,195,197,255),outline=borde)
+            draw.rectangle((cx-55,cy+100,cx+40,cy+295),fill=(79,58,43,255),outline=oro,width=8)
+        elif motivo=='puente':
+            draw.line((cx-425,cy+170,cx+425,cy+170),fill=borde,width=28)
+            for xx in range(cx-360,cx+380,120):draw.line((xx,cy+170,xx,cy-50),fill=borde,width=14)
+        elif motivo=='pozo':
+            draw.ellipse((cx-300,cy-105,cx+300,cy+155),fill=(73,82,91,255),outline=borde,width=18)
+            draw.ellipse((cx-230,cy-50,cx+230,cy+95),fill=oscuro)
+        elif motivo=='silla':
+            draw.rectangle((cx-180,cy-255,cx+180,cy+85),fill=(67,52,49,255),outline=oro,width=13)
+            draw.rectangle((cx-225,cy+90,cx+225,cy+160),fill=(83,64,48,255),outline=oro,width=9)
+            for xx in (cx-150,cx+150):draw.line((xx,cy+155,xx,cy+310),fill=borde,width=19)
+        else:
+            draw.rectangle((cx-250,cy-285,cx+250,cy+285),fill=(80,64,59,255),outline=oro,width=22)
+            draw.ellipse((cx-100,cy-175,cx+100,cy+100),fill=(130,150,160,255))
     elif motivo=='bosque':
         for k in range(6):
             x=cx-390+k*150
@@ -2359,7 +2435,8 @@ def _dibujar_motivo_terror(draw, motivo, w, h, rng):
             draw.line((x,cy-100,x-120,cy-230),fill=oscuro,width=14)
             draw.line((x,cy-150,x+140,cy-280),fill=oscuro,width=13)
     else:
-        draw.ellipse((cx-220,cy-220,cx+220,cy+220),fill=(177,194,209,190))
+        # Escena abstracta: no inventar objetos que no están en el relato.
+        draw.rectangle((cx-275,cy-200,cx+275,cy+200),outline=(85,107,130,120),width=4)
 
 def _terror_escenas_procedurales(caso, carpeta, numero):
     """Ilustraciones contextuales: una por párrafo del guion narrado."""
@@ -2388,6 +2465,23 @@ def _terror_escenas_procedurales(caso, carpeta, numero):
         # Escenario deliberadamente ilustrado; sujeto principal ocupa el centro.
         d.ellipse((430,90,1290,810),fill=(36,53,72,160))
         _dibujar_motivo_terror(d,escena['motivo'],W,H,rng)
+        if escena['motivo']=='texto_contextual':
+            from PIL import ImageFont
+            try:
+                font=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',39)
+            except OSError:
+                font=ImageFont.load_default()
+            frase=escena['frase_visual']
+            lineas=[];actual=''
+            for palabra in frase.split():
+                propuesta=(actual+' '+palabra).strip()
+                if d.textlength(propuesta,font=font)>990 and actual:
+                    lineas.append(actual);actual=palabra
+                else:actual=propuesta
+            if actual:lineas.append(actual)
+            for idx,linea in enumerate(lineas[:4]):
+                d.text((280,345+idx*66),linea,font=font,
+                       fill=(224,226,228,255),stroke_width=2,stroke_fill=(8,11,20,255))
         capa=Image.new('RGBA',(W,H));niebla=ImageDraw.Draw(capa)
         for j in range(4):
             yy=H-130+j*55
@@ -2406,17 +2500,18 @@ def _completar_visual_terror(caso,carpeta,fotos,creditos):
     originales=_terror_escenas_procedurales(caso,Path(carpeta)/'escenas_originales',
              max((AERO_VISUALES_OBJETIVO if MODO_VIRAL and IMAGENES_POR_ESCENA else IMAGENES_MINIMAS),len(caso.get('_plan_visual') or [])-1))
     fotos.clear();creditos.clear()
+    escenas_contextuales=_plan_visual_semantico(caso)
     for i,origen in enumerate(originales):
         destino=Path(carpeta)/f'imagen_{i:02}.jpg'
         shutil.copy2(origen,destino)
         fotos.append(destino)
-        escenas=_plan_visual_semantico(caso)
-        motivo=escenas[i]['motivo'] if i<len(escenas) else 'ambientacion'
+        motivo=escenas_contextuales[i]['motivo'] if i<len(escenas_contextuales) else 'texto_contextual'
         creditos.append({'archivo':destino.name,'titulo':f'Ilustración contextual: {motivo}',
             'pagina':'','url_original':'','licencia':'Arte procedural original creado para este video',
             'licencia_url':'','autor':'AEROFACTUM Universal (generación algorítmica local)',
             'atribucion':'Ilustración, no evidencia de hechos reales',
             'puntuacion_relevancia':20,'terminos_relacionados':[motivo],
+            'frase_narrada':escenas_contextuales[i]['frase_visual'] if i<len(escenas_contextuales) else '',
             'consulta_origen':'generación local sin API','uso':'Ilustración ficticia de la escena',
             'tipo_recurso':'ilustracion_procedural'})
     print(f'  Visual contextual: {len(fotos)} ilustraciones, una por escena narrativa.',flush=True)
@@ -3309,8 +3404,9 @@ def _foto_por_escena(caso, indice, fotos):
     if maxima:
         candidatos=[j for p,j in mejores if p==maxima]
         return fotos[candidatos[indice%len(candidatos)]]
-    # La falta de coincidencias se consigna para revisión en el informe visual.
-    return fotos[indice%len(fotos)]
+    # Sin coincidencia literal no afirmar pertinencia visual. Se registra
+    # en la auditoría y se conserva un recurso validado a nivel de tema.
+    return fotos[0]
 
 
 def renderizar_clips(bloques,fotos,caso,carpeta):
@@ -3502,50 +3598,34 @@ def _credito_recurso_visual_valido(c):
 
 
 def descripcion_youtube(caso, fuentes, creditos):
-    """Sin créditos obligatorios: fotografías CC0/PD o arte original local verificado."""
-    # Evitar omitir por accidente los créditos de un recurso con licencia BY.
-    # Las fotos futuras ya se filtran en licencia_valida(), pero esta
-    # protección también cubre datos guardados por versiones anteriores.
+    """Descripción pública neutra: sin marca antigua, series ni bibliografía.
+
+    La trazabilidad de fuentes continúa en FUENTES_INVESTIGACION.json y
+    metadatos internos. Nunca se omite una atribución externa obligatoria.
+    """
     for c in creditos:
         if not _credito_recurso_visual_valido(c):
             raise RuntimeError(
                 'Recurso visual sin procedencia local verificada ni licencia externa CC0/PD: '
                 + str(c.get('titulo', c.get('archivo', '?')))
-                + '. No se omitirá ninguna atribución que pueda ser obligatoria.'
+                + '. No se omitirá ninguna atribución obligatoria.'
             )
-    categoria = _normalizar_texto_foto(caso.get('categoria', '')).strip().replace(' ', '')
-    etiquetas = [
-        'AEROFACTUM', *(['Aviacion', 'Aeronautica', 'AviacionCivil',
-        'IndustriaAeronautica', 'Pilotos', 'Aviones', 'Aeronaves',
-        'SeguridadAerea', 'CulturaAeronautica', 'TecnologiaAeronautica',
-        'AprendeAviacion', 'Aviation', 'AviationLovers'] if _nicho_es_aviacion()
-        else [x.capitalize() for x in _aero_norm(NICHO).split() if len(x)>2]),
-    ]
-    if not _nicho_es_aviacion():
-        etiquetas.extend(['Divulgacion','Aprender','Documental','Cultura','Conocimiento',
-                          'Investigacion','Educacion','Datos','Curiosidades','Explicaciones',
-                          'ConocimientoGeneral'])
-    if categoria:
-        etiquetas.append(''.join(t.capitalize() for t in categoria.split()))
-    etiquetas = list(dict.fromkeys(etiquetas))
-    parrafos = [
-        f"{caso['titulo']} | AEROFACTUM", '',
-        f'Descubre información investigada y explicada sobre {NICHO}.',
-        'Contenido de divulgación basado en las fuentes consultadas. Revisa las referencias originales.',
-        '', 'FUENTES DE REFERENCIA:',
-    ]
-    for f in fuentes:
-        parrafos.append(f"- {f.get('nombre', 'Fuente')}: {f.get('url', '')}")
+    hashtags = [w.capitalize() for w in _aero_norm(NICHO).split() if len(w)>2]
+    hashtags += ['Historias','Misterio','Relatos','Narracion','Curiosidades',
+                 'Videos','Descubre','Aprende','Contenido','Cultura'] if _univ_es_terror() else [
+                 'Divulgacion','Aprender','Conocimiento','Documental','Curiosidades',
+                 'Cultura','Videos','Informacion','Explorar','Educacion']
+    hashtags=list(dict.fromkeys(re.sub(r'[^a-zA-Z0-9ÁÉÍÓÚáéíóúÑñ]', '',h)
+                                for h in hashtags if h))
+    titulo_publico=str(caso.get('titulo','')).strip()
+    parrafos=[titulo_publico, '',
+             ('Una historia para dejarse llevar por el misterio.' if _univ_es_terror()
+              else 'Una mirada al tema desde una perspectiva clara y entretenida.')]
     if MODO_VIRAL and PREGUNTA_FINAL_ESPECIFICA:
         parrafos.extend(['',_viral_pregunta_contextual(caso)])
-    if MODO_VIRAL and GENERAR_SERIES_TEMATICAS:
-        parrafos.extend(['',f'Serie temática: {caso.get("categoria", NICHO)}'])
-    parrafos += ['', ' '.join('#' + h for h in etiquetas)]
-    texto = '\n'.join(parrafos)
-    if len(texto) > 4900:
-        raise RuntimeError('Descripción supera 4900 caracteres.')
-    if sum(1 for x in texto.split() if x.startswith('#')) < 10:
-        raise RuntimeError('La descripción requiere al menos diez hashtags.')
+    parrafos.extend(['',' '.join('#'+h for h in hashtags)])
+    texto='\n'.join(parrafos)
+    if len(texto)>4900:raise RuntimeError('Descripción supera 4900 caracteres.')
     return texto
 
 
@@ -3684,7 +3764,7 @@ def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,
     cuerpo={'snippet':{'title':titulo,
          'description':descripcion_validada,
          'categoryId':('28' if _nicho_es_aviacion() else '27'),'defaultLanguage':'es',
-         'tags':['AEROFACTUM', NICHO[:35], caso['categoria'][:35], caso.get('_titulo_caso',caso['titulo'])[:35]]},
+         'tags':[NICHO[:35], caso['categoria'][:35], caso.get('_titulo_caso',caso['titulo'])[:35]]},
          'status':{'privacyStatus':YOUTUBE_PRIVACY,'selfDeclaredMadeForKids':False,
                    'containsSyntheticMedia':ia_requiere_si}}
     # Solo videos nuevos: una vez obtenido el ID, se guarda de inmediato para impedir duplicados.
