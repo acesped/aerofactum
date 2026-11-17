@@ -89,5 +89,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=49jzw7TZLTI",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/ops_01_20261117_122602_910614/AEROFACTUM.mp4"
+  },
+  {
+    "episodio": "historias-de-terror-1278868",
+    "caso": "historias-de-terror-1278868",
+    "titulo": "¿Qué misterio esconden los espectros del Sanatorio Durán en Costa Rica?",
+    "fecha_utc": "2026-11-17T14:52:18.195307+00:00",
+    "youtube_id": "4vdKCnB1Ssg",
+    "youtube_url": "https://www.youtube.com/watch?v=4vdKCnB1Ssg",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/historias-de-terror-1278868_20261117_144848_632953/AEROFACTUM.mp4"
   }
 ]
