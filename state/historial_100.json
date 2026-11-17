@@ -99,5 +99,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=4vdKCnB1Ssg",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/historias-de-terror-1278868_20261117_144848_632953/AEROFACTUM.mp4"
+  },
+  {
+    "episodio": "industria-aeronautica-655013",
+    "caso": "industria-aeronautica-655013",
+    "titulo": "¿Por qué la Regia Aeronautica brilló en la Segunda Guerra Mundial y perdió su arsenal?",
+    "fecha_utc": "2026-11-17T15:28:00.522966+00:00",
+    "youtube_id": "G7YmLclkFuI",
+    "youtube_url": "https://www.youtube.com/watch?v=G7YmLclkFuI",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/industria-aeronautica-655013_20261117_152613_512856/AEROFACTUM.mp4"
   }
 ]
