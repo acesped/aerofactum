@@ -119,5 +119,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=Ta8BbP5B3Wk",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/historias-de-terror-8157785_20261117_164348_470595/¿Por qué el fantasma Teke Teke arrastra su cuerpo y acecha las vías japonesas.mp4"
+  },
+  {
+    "episodio": "historias-de-la-aviacion-371975",
+    "caso": "historias-de-la-aviacion-371975",
+    "titulo": "¿Cómo Emilio Herrera diseñó el primer traje espacial español y qué legado dejó?",
+    "fecha_utc": "2026-11-17T17:05:37.242857+00:00",
+    "youtube_id": "a0Ev9t1fx7Y",
+    "youtube_url": "https://www.youtube.com/watch?v=a0Ev9t1fx7Y",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/historias-de-la-aviacion-371975_20261117_170350_320596/¿Cómo Emilio Herrera diseñó el primer traje espacial español y qué legado dejó.mp4"
   }
 ]
