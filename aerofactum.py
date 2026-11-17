@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM UNIVERSAL 6.2 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM UNIVERSAL 6.3 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música cinematográfica original sintetizada con Python.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA. Para relatos de terror se admiten ilustraciones originales procedurales debidamente identificadas.
@@ -2316,12 +2316,10 @@ def buscar_fotos(caso,session,carpeta):
         for c in creditos:
             f.write(f"{c['archivo']} | {c['titulo']} | Relevancia {c['puntuacion_relevancia']} | {','.join(c['terminos_relacionados'])} | Autor: {c['autor']} | Licencia: {c['licencia']} | {c['licencia_url']} | {c['pagina']}\n")
     if len(fotos) < IMAGENES_MINIMAS_ABSOLUTAS:
-        aviso=(f'No se encontró ninguna FOTOGRAFÍA REAL pertinente y con licencia compatible para «{principal}». '
-               'Se excluyeron diagramas, ilustraciones, imágenes generadas por ordenador, mapas y esquemas. '
-               'No se producirá el video con imágenes no fotográficas. '
-               'El filtro acepta sólo CC0/dominio público para no omitir créditos exigidos por otras licencias. '
-               'Consulta imagenes_descartadas.json; prueba con otro tema o amplía el banco de fotografías '
-               'CC0/dominio público, sin relajar la obligación de atribución.')
+        aviso=(f'No se encontraron recursos visuales suficientes y válidos para «{principal}». '
+               'Las fotos externas requieren licencia CC0 o dominio público y pertinencia; '
+               'para el nicho de terror también se admiten escenas procedurales originales. '
+               'Consulta imagenes_descartadas.json y los diagnósticos de generación.')
         (carpeta/'AVISO_SIN_FOTOGRAFIAS.txt').write_text(aviso+'\n',encoding='utf-8')
         raise RuntimeError(aviso)
     if len(fotos)<IMAGENES_MINIMAS:
@@ -3196,20 +3194,39 @@ def subir_reanudable(solicitud, descripcion):
     return respuesta
 
 
+def _credito_recurso_visual_valido(c):
+    """Las ilustraciones hechas localmente no requieren licencia de Commons.
+
+    Recursos externos continúan exigiendo CC0 o dominio público. El marcador
+    procedural por sí solo NO puede justificar la omisión de una atribución:
+    debe estar acompañado por procedencia local coherente y sin URL externa.
+    """
+    if not isinstance(c, dict):
+        return False
+    if c.get('tipo_recurso') == 'ilustracion_procedural':
+        return (not (c.get('pagina') or c.get('url_original') or c.get('licencia_url'))
+                and c.get('licencia') == 'Arte procedural original creado para este video'
+                and c.get('autor') == 'AEROFACTUM Universal (generación algorítmica local)'
+                and c.get('consulta_origen') == 'generación local sin API'
+                and str(c.get('archivo', '')).startswith('imagen_')
+                and str(c.get('archivo', '')).endswith('.jpg'))
+    return licencia_valida({'extmetadata': {
+        'LicenseShortName': {'value': c.get('licencia', '')},
+        'LicenseUrl': {'value': c.get('licencia_url', '')},
+    }})
+
+
 def descripcion_youtube(caso, fuentes, creditos):
-    """Descripción sin sección de atribuciones: solo se admiten fotos CC0/PD."""
+    """Sin créditos obligatorios: fotografías CC0/PD o arte original local verificado."""
     # Evitar omitir por accidente los créditos de un recurso con licencia BY.
     # Las fotos futuras ya se filtran en licencia_valida(), pero esta
     # protección también cubre datos guardados por versiones anteriores.
     for c in creditos:
-        if not licencia_valida({'extmetadata': {
-            'LicenseShortName': {'value': c.get('licencia', '')},
-            'LicenseUrl': {'value': c.get('licencia_url', '')},
-        }}):
+        if not _credito_recurso_visual_valido(c):
             raise RuntimeError(
-                'No se puede eliminar la atribución de una fotografía ' 
-                'con licencia que la exige: ' + c.get('titulo', c.get('archivo', '?')) +
-                '. Selecciona únicamente fotografías CC0 o de dominio público.'
+                'Recurso visual sin procedencia local verificada ni licencia externa CC0/PD: '
+                + str(c.get('titulo', c.get('archivo', '?')))
+                + '. No se omitirá ninguna atribución que pueda ser obligatoria.'
             )
     categoria = _normalizar_texto_foto(caso.get('categoria', '')).strip().replace(' ', '')
     etiquetas = [
@@ -3917,6 +3934,21 @@ def prueba_interna():
                 assert len(arte)==IMAGENES_MINIMAS and len(reg)==IMAGENES_MINIMAS
                 assert all(x.exists() for x in arte)
                 assert all(x.get('tipo_recurso')=='ilustracion_procedural' for x in reg)
+                # Regresión: los metadatos de las imágenes procedurales no
+                # deben bloquear la producción antes de renderizar el vídeo.
+                assert all(_credito_recurso_visual_valido(x) for x in reg)
+                descripcion_youtube(prueba_arte, [{'nombre':'Ensayo','url':'https://example.org/fuente'}], reg)
+                cc0={'archivo':'imagen_90.jpg','titulo':'Foto externa CC0', 'licencia':'CC0', 'licencia_url':'', 'pagina':'https://commons.wikimedia.org/wiki/File:Example.jpg'}
+                assert _credito_recurso_visual_valido(cc0)
+                by={'archivo':'imagen_91.jpg','titulo':'Foto externa con atribución', 'licencia':'CC BY-SA 4.0', 'licencia_url':'https://creativecommons.org/licenses/by-sa/4.0/'}
+                assert not _credito_recurso_visual_valido(by)
+                assert not _credito_recurso_visual_valido(dict(reg[0], url_original='https://example.org/external.jpg'))
+                try:
+                    descripcion_youtube(prueba_arte, [], reg+[by])
+                except RuntimeError as exc:
+                    assert 'licencia' in str(exc).lower() or 'atribución' in str(exc).lower()
+                else:
+                    raise AssertionError('La imagen CC BY-SA sin créditos no fue rechazada')
                 assert len({hashlib.sha256(x.read_bytes()).hexdigest() for x in arte})==len(arte)
                 print('OK: terror con escenas originales distintas, sin fotografías falsas')
     print('OK: 100 temas, Lorenzo, NM, fuentes, citas literales, fotos y títulos')
