@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM UNIVERSAL VIRAL 7.1 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM UNIVERSAL VIRAL 7.2 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música cinematográfica original sintetizada con Python.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA. Para relatos de terror se admiten ilustraciones originales procedurales debidamente identificadas.
@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from datetime import datetime, timezone
 
 # ==================== CONFIGURACIÓN EDITABLE ====================
-NICHO = "Historias de Terror"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
+NICHO = "Historia de la Aviación"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
 TEMA = os.getenv('AERO_TEMA', 'aleatorio')       # caso específico o 'aleatorio'; por defecto no repite episodios
 VOZ = 'es-CL-LorenzoNeural'  # voz fija para TODOS los segmentos de narración
 VELOCIDAD = os.getenv('AERO_VELOCIDAD_VOZ', '-5%').strip()  # Lorenzo más pausado; configurable en GitHub Variables
@@ -2241,114 +2241,180 @@ def configurar_reintentos_wikimedia(session):
     return session
 
 
-def _terror_escenas_procedurales(caso, carpeta, numero):
-    """Crea arte ORIGINAL no fotográfico sin red, modelos ni API de pago.
+# ----------------- DIRECCIÓN VISUAL SEMÁNTICA 7.2 -----------------
+# No se confunden escenas estilizadas con fotografías de acontecimientos reales.
+_MOTIVOS_TERROR = {
+ 'alquimia': r'alquimis|poci[oó]n|laboratorio|frasco|elixir|qu[ií]mic|brebaje',
+ 'libro': r'libro|p[aá]gina|manuscrito|escrit|diario|biblioteca|hechizo',
+ 'puerta': r'puerta|cerradura|llave|abr[ií]|cerr[oó]|umbral|entrada',
+ 'espejo': r'espejo|reflejo|reflejad|cristal|vidrio',
+ 'reloj': r'reloj|medianoche|hora|campanad|tiempo',
+ 'ventana': r'ventana|cortina|balc[oó]n|mir[oó] hacia',
+ 'fantasma': r'fantasma|aparici[oó]n|esp[ií]ritu|espectro|alma',
+ 'persona': r'mujer|hombre|niñ[oa]|familia|visitante|viajero|persona|alguien|sombra|silueta',
+ 'escalera': r'escalera|peldañ|s[oó]tano|subi[oó]|baj[oó]',
+ 'bosque': r'bosque|[aá]rbol|sendero|monte|vegetaci[oó]n',
+ 'casa': r'casa|mansi[oó]n|habitaci[oó]n|castillo|edificio|hogar|pasillo',
+ 'vehiculo': r'tren|vag[oó]n|coche|carro|cami[oó]n|veh[ií]culo',
+ 'huellas': r'huella|paso|pisada|rastro|suelo|sangre',
+ 'carta': r'carta|mensaje|nota|sobre|postal',
+ 'luna': r'luna|noche|oscuridad|cielo|estrella',
+}
 
-    La ilustración nunca se presenta como documento histórico ni fotografía.
-    Se genera únicamente para un nicho explícitamente narrativo de terror.
-    Cada archivo corresponde a una composición nueva (no recortes repetidos).
-    """
-    from PIL import Image, ImageDraw, ImageFilter
-    import numpy as np
-    carpeta=Path(carpeta)
-    carpeta.mkdir(parents=True,exist_ok=True)
-    numero=max(1,min(10,int(numero)))
-    W,H=1600,900
-    titulo=caso.get('_titulo_caso',caso.get('titulo',''))
-    base=int.from_bytes(hashlib.sha256(str(caso.get('id',titulo)).encode('utf-8')).digest()[:8],'big')
-    resultados=[]
-    for indice in range(numero):
-        rng=random.Random(base+indice*7919)
-        variante=indice%5
-        paletas=[((7,17,29),(21,42,56)),((17,14,31),(53,29,57)),
-                 ((13,23,23),(33,51,46)),((24,17,21),(64,36,43)),
-                 ((12,18,31),(37,42,65))]
-        arriba,abajo=paletas[variante]
-        ys=np.linspace(0,1,H,dtype=np.float32)[:,None]
-        grad=np.empty((H,W,3),dtype=np.uint8)
-        for c in range(3):
-            fila=arriba[c]*(1-ys)+abajo[c]*ys
-            grad[:,:,c]=np.repeat(fila,W,axis=1).astype('uint8')
-        img=Image.fromarray(grad,'RGB')
-        draw=ImageDraw.Draw(img,'RGBA')
-        # Partículas de polvo y puntos estelares discretos.
-        for k in range(130):
-            x=rng.randrange(W);y=rng.randrange(H*3//5)
-            a=rng.randrange(15,70);r=rng.choice((1,1,2))
-            draw.ellipse((x-r,y-r,x+r,y+r),fill=(194,213,226,a))
-        luna_x=int(W*(0.22+0.14*(indice%4)));luna_y=145+22*(indice%3)
-        radio=72+12*(indice%3)
-        # Halo suave creado desde una capa separada.
-        halo=Image.new('RGBA',(W,H),(0,0,0,0));hd=ImageDraw.Draw(halo)
-        hd.ellipse((luna_x-radio*2,luna_y-radio*2,luna_x+radio*2,luna_y+radio*2),fill=(153,184,210,46))
-        halo=halo.filter(ImageFilter.GaussianBlur(65))
-        img=Image.alpha_composite(img.convert('RGBA'),halo)
-        draw=ImageDraw.Draw(img,'RGBA')
-        draw.ellipse((luna_x-radio,luna_y-radio,luna_x+radio,luna_y+radio),fill=(190,209,214,210))
-        draw.ellipse((luna_x-radio+15,luna_y-radio+14,luna_x+radio+15,luna_y+radio+14),fill=(22,32,43,120))
-        suelo=H*0.77
-        # Edificios, corredor o bosque según la escena; todo es geometría original.
-        if variante in (1,3):
-            x0=int(W*.56);x1=int(W*.88);y0=int(H*.32)
-            draw.polygon([(x0,7*H//10),(x0,y0+120),(x0+90,y0+40),
-                          (x0+175,y0+125),(x1,y0+55),(x1,7*H//10)],fill=(9,13,23,248))
-            for tx in (x0+40,x0+145,x1-55):
-                draw.rectangle((tx,y0+135,tx+22,y0+195),fill=(183,132,75,120))
-                draw.line((tx+11,y0+135,tx+11,y0+195),fill=(14,19,26,200),width=4)
-            draw.polygon([(0,H),(W,H),(W,7*H//10),(0,8*H//10)],fill=(8,14,20,220))
+def _plan_visual_semantico(caso):
+    """Una imagen por escena narrativa; la acción de cada párrafo determina el motivo."""
+    plan=caso.get('_plan_visual') or []
+    titulo=str(caso.get('_titulo_caso') or caso.get('titulo') or '')
+    escenas=[]
+    for indice,(tipo,voz) in enumerate(plan):
+        if tipo=='cta':continue
+        texto=str(voz)
+        # Preferir la acción o el objeto mencionado en la escena; el tema
+        # completo es respaldo cuando el párrafo contiene pocos sustantivos.
+        motivos=[m for m,pat in _MOTIVOS_TERROR.items() if re.search(pat,texto,re.I)]
+        if not motivos:
+            motivos=[m for m,pat in _MOTIVOS_TERROR.items() if re.search(pat,titulo,re.I)]
+        if not motivos:motivos=['libro']
+        # Preservar también una segunda señal para diferenciar actos consecutivos.
+        motivo=motivos[0]
+        if len(motivos)>1 and indice%2:motivo=motivos[1]
+        escenas.append({'indice':indice,'tipo':tipo,'texto':texto[:500],
+                        'motivo':motivo,'motivos_detectados':motivos[:6],
+                        'recurso':f'imagen_{indice:02}.jpg'})
+    return escenas
+
+def _dibujar_motivo_terror(draw, motivo, w, h, rng):
+    """Objeto reconocible, central, ilustrado localmente; sin modelo ni API."""
+    cx=int(w*.53); cy=int(h*.53)
+    borde=(168,196,213,255); oscuro=(12,17,27,255); oro=(214,171,99,255)
+    if motivo in ('puerta','casa','ventana'):
+        x0,y0=cx-205,cy-275;x1,y1=cx+205,cy+325
+        draw.rectangle((x0,y0,x1,y1),fill=(13,18,30,245),outline=borde,width=11)
+        if motivo=='puerta':
+            draw.polygon([(x0+50,y0+35),(x1-35,y0+50),(x1-35,y1-20),(x0+50,y1-30)],fill=(53,39,45,255),outline=oro)
+            draw.ellipse((x1-99,cy+12,x1-78,cy+33),fill=oro)
+        elif motivo=='ventana':
+            draw.line((cx,y0,cx,y1),fill=borde,width=12)
+            draw.line((x0,cy,x1,cy),fill=borde,width=12)
+            draw.ellipse((cx-110,cy-120,cx-15,cy-25),fill=(177,189,186,200))
         else:
-            draw.polygon([(0,int(.8*H)),(300,int(.68*H)),(630,int(.8*H)),
-                          (950,int(.70*H)),(W,int(.78*H)),(W,H),(0,H)],fill=(9,19,24,220))
-        # Árboles esqueléticos con siluetas y ramas no repetidas.
-        for j in range(13):
-            x=int(j*W/12+rng.randint(-75,75))
-            altura=rng.randint(260,625)
-            ybase=H+rng.randint(-160,50)
-            anchura=max(6,altura//46)
-            color=(3,10,16,225) if j%3 else (6,13,21,230)
-            draw.line((x,ybase,x+rng.randrange(-30,30),ybase-altura),fill=color,width=anchura)
-            copa_x=x+rng.randrange(-30,30);copa_y=ybase-altura
-            for nivel in range(4):
-                by=int(ybase-altura*(.48+0.13*nivel))
-                anch=int((altura/5)*(1-.17*nivel))
-                draw.line((x,by,x-anch,by-rng.randint(40,110)),fill=color,width=max(3,anchura//2))
-                draw.line((x,by,x+anch,by-rng.randint(40,110)),fill=color,width=max(3,anchura//2))
-            draw.line((x, ybase-altura//2, copa_x,copa_y),fill=color,width=anchura)
-        # Niebla tenue en bandas sobrepuestas.
-        niebla=Image.new('RGBA',(W,H),(0,0,0,0));nd=ImageDraw.Draw(niebla)
-        for banda in range(9):
-            y=int(H*(.60+.035*banda))+rng.randrange(-20,20)
-            nd.ellipse((-100-rng.randrange(200),y-30,W+rng.randrange(200),y+65),fill=(145,161,179,10+2*(banda%3)))
-        niebla=niebla.filter(ImageFilter.GaussianBlur(28))
-        img=Image.alpha_composite(img,niebla).convert('RGB')
-        destino=carpeta/f'imagen_{indice:02}.jpg'
-        img.save(destino,quality=90,optimize=True)
-        resultados.append(destino)
-    return resultados
+            draw.polygon([(x0-90,y0),(cx,y0-190),(x1+90,y0)],fill=oscuro,outline=borde)
+            draw.rectangle((cx-65,cy+50,cx+65,y1),fill=(7,9,17,255),outline=oro,width=6)
+    elif motivo in ('libro','carta'):
+        if motivo=='libro':
+            draw.polygon([(cx-340,cy-185),(cx,cy-125),(cx,cy+230),(cx-340,cy+165)],fill=(188,173,143,255),outline=oro)
+            draw.polygon([(cx,cy-125),(cx+340,cy-185),(cx+340,cy+165),(cx,cy+230)],fill=(159,149,126,255),outline=oro)
+            for y in range(cy-95,cy+130,35):
+                draw.line((cx-300,y,cx-55,y+30),fill=(57,58,60,180),width=4)
+                draw.line((cx+55,y+30,cx+300,y),fill=(57,58,60,180),width=4)
+        else:
+            draw.rectangle((cx-320,cy-205,cx+320,cy+205),fill=(180,169,144,255),outline=oro,width=8)
+            draw.polygon([(cx-320,cy-205),(cx,cy+60),(cx+320,cy-205)],outline=(69,55,45,255),width=8)
+    elif motivo=='alquimia':
+        draw.polygon([(cx-65,cy-275),(cx+65,cy-275),(cx+65,cy-80),(cx+250,cy+230),(cx-250,cy+230),(cx-65,cy-80)],fill=(35,84,95,225),outline=borde)
+        draw.polygon([(cx-187,cy+90),(cx+188,cy+90),(cx+245,cy+228),(cx-244,cy+228)],fill=(75,162,157,210))
+        for q in range(18):
+            a=rng.randint(-150,150);b=rng.randint(90,195);rad=rng.randint(5,17)
+            draw.ellipse((cx+a-rad,cy+b-rad,cx+a+rad,cy+b+rad),outline=(193,228,220,200),width=3)
+    elif motivo=='espejo':
+        draw.ellipse((cx-215,cy-300,cx+215,cy+300),fill=(34,66,88,240),outline=oro,width=24)
+        draw.ellipse((cx-155,cy-220,cx+155,cy+210),outline=(137,195,206,210),width=6)
+        draw.ellipse((cx-45,cy-65,cx+45,cy+32),fill=(10,15,23,230))
+    elif motivo=='reloj':
+        draw.ellipse((cx-255,cy-255,cx+255,cy+255),fill=(31,39,51,245),outline=oro,width=18)
+        for a in range(12):
+            theta=a*math.pi/6
+            xx=cx+int(210*math.sin(theta)); yy=cy-int(210*math.cos(theta))
+            draw.ellipse((xx-7,yy-7,xx+7,yy+7),fill=oro)
+        draw.line((cx,cy,cx-85,cy-155),fill=borde,width=14)
+        draw.line((cx,cy,cx+140,cy-35),fill=borde,width=9)
+    elif motivo in ('persona','fantasma'):
+        draw.ellipse((cx-75,cy-250,cx+75,cy-90),fill=(173,185,192,235) if motivo=='fantasma' else oscuro,outline=borde,width=5)
+        draw.polygon([(cx-80,cy-110),(cx+80,cy-110),(cx+190,cy+290),(cx-195,cy+290)],fill=(115,139,153,195) if motivo=='fantasma' else oscuro,outline=borde)
+        if motivo=='fantasma':
+            for x in (cx-30,cx+30):draw.ellipse((x-12,cy-193,x+12,cy-167),fill=oscuro)
+    elif motivo=='escalera':
+        for k in range(8):
+            y=cy-225+k*66
+            size=80+k*24
+            draw.polygon([(cx-size,y),(cx+size,y),(cx+size+23,y+44),(cx-size-23,y+44)],fill=(45+k*4,50+k*4,64+k*4,245),outline=borde)
+    elif motivo=='vehiculo':
+        draw.rectangle((cx-320,cy-125,cx+320,cy+175),fill=(30,35,47,255),outline=borde,width=9)
+        for x in range(cx-235,cx+240,155):draw.rectangle((x,cy-85,x+95,cy+35),fill=(74,107,125,230),outline=borde)
+        for x in (cx-205,cx+205):draw.ellipse((x-65,cy+125,x+65,cy+255),fill=oscuro,outline=oro,width=12)
+    elif motivo=='huellas':
+        for k in range(5):
+            x=cx+(-1 if k%2 else 1)*(75+k*18);y=cy-245+k*112
+            draw.ellipse((x-40,y-60,x+40,y+33),fill=(139,157,163,210))
+            draw.ellipse((x+18,y-90,x+48,y-52),fill=(139,157,163,210))
+    elif motivo=='bosque':
+        for k in range(6):
+            x=cx-390+k*150
+            draw.line((x,cy+330,x,cy-290),fill=oscuro,width=28)
+            draw.line((x,cy-100,x-120,cy-230),fill=oscuro,width=14)
+            draw.line((x,cy-150,x+140,cy-280),fill=oscuro,width=13)
+    else:
+        draw.ellipse((cx-220,cy-220,cx+220,cy+220),fill=(177,194,209,190))
 
+def _terror_escenas_procedurales(caso, carpeta, numero):
+    """Ilustraciones contextuales: una por párrafo del guion narrado."""
+    from PIL import Image,ImageDraw,ImageFilter
+    import numpy as np
+    carpeta=Path(carpeta);carpeta.mkdir(parents=True,exist_ok=True)
+    escenas=_plan_visual_semantico(caso)
+    if not escenas:
+        escenas=[{'indice':i,'tipo':'escena','texto':caso.get('titulo',''),
+                 'motivo':'libro','motivos_detectados':['libro'],'recurso':f'imagen_{i:02}.jpg'}
+                for i in range(max(1,numero))]
+    numero=len(escenas)
+    W,H=1600,900
+    seed=int.from_bytes(hashlib.sha256(str(caso.get('id',caso.get('titulo',''))).encode()).digest()[:8],'big')
+    archivos=[]
+    for i,escena in enumerate(escenas):
+        rng=random.Random(seed+i*7919)
+        y=np.linspace(0,1,H,dtype=np.float32)[:,None,None]
+        arriba=np.array((9,13,26),dtype=np.float32)[None,None,:]
+        abajo=np.array((31+i%5*3,35,52+i%4*4),dtype=np.float32)[None,None,:]
+        img=Image.fromarray(np.broadcast_to((arriba*(1-y)+abajo*y).astype('uint8'),(H,W,3)).copy())
+        d=ImageDraw.Draw(img,'RGBA')
+        for j in range(80):
+            x=rng.randrange(W);yy=rng.randrange(H);rad=rng.choice((1,2,3))
+            d.ellipse((x-rad,yy-rad,x+rad,yy+rad),fill=(130,167,190,rng.randrange(18,85)))
+        # Escenario deliberadamente ilustrado; sujeto principal ocupa el centro.
+        d.ellipse((430,90,1290,810),fill=(36,53,72,160))
+        _dibujar_motivo_terror(d,escena['motivo'],W,H,rng)
+        capa=Image.new('RGBA',(W,H));niebla=ImageDraw.Draw(capa)
+        for j in range(4):
+            yy=H-130+j*55
+            niebla.ellipse((80,yy-65,W-80,yy+55),fill=(130,147,172,25))
+        img=Image.alpha_composite(img.convert('RGBA'),capa.filter(ImageFilter.GaussianBlur(30))).convert('RGB')
+        archivo=carpeta/f'imagen_{i:02}.jpg'
+        img.save(archivo,quality=92,optimize=True)
+        archivos.append(archivo)
+    (carpeta.parent/'PLAN_VISUAL_ESCENAS.json').write_text(
+        json.dumps(escenas,ensure_ascii=False,indent=2),encoding='utf-8')
+    return archivos
 
 def _completar_visual_terror(caso,carpeta,fotos,creditos):
-    if not (caso.get('_universal') and _univ_es_terror()):
-        return fotos,creditos
-    faltan=max(0,(AERO_VISUALES_OBJETIVO if MODO_VIRAL and IMAGENES_POR_ESCENA else IMAGENES_MINIMAS)-len(fotos))
-    if not faltan:return fotos,creditos
-    # Generar en carpeta aparte para no sobrescribir fotos descargadas.
-    originales=_terror_escenas_procedurales(caso,Path(carpeta)/'escenas_originales',faltan)
-    for origen in originales:
-        destino=Path(carpeta)/f'imagen_{len(fotos):02}.jpg'
+    if not (caso.get('_universal') and _univ_es_terror()):return fotos,creditos
+    # Priorizar el argumento de cada escena frente a fotografías genéricas.
+    originales=_terror_escenas_procedurales(caso,Path(carpeta)/'escenas_originales',
+             max((AERO_VISUALES_OBJETIVO if MODO_VIRAL and IMAGENES_POR_ESCENA else IMAGENES_MINIMAS),len(caso.get('_plan_visual') or [])-1))
+    fotos.clear();creditos.clear()
+    for i,origen in enumerate(originales):
+        destino=Path(carpeta)/f'imagen_{i:02}.jpg'
         shutil.copy2(origen,destino)
         fotos.append(destino)
-        creditos.append({'archivo':destino.name,
-           'titulo':'Escena cinematográfica original generada con Python',
-           'pagina':'','url_original':'','licencia':'Arte procedural original creado para este video',
-           'licencia_url':'','autor':'AEROFACTUM Universal (generación algorítmica local)',
-           'atribucion':'Ilustración procedimental, no fotografía ni registro de hechos reales',
-           'puntuacion_relevancia':10,'terminos_relacionados':['terror','ambientación'],
-           'consulta_origen':'generación local sin API',
-           'uso':'Ambientación ficticia del relato; no evidencia documental',
-           'tipo_recurso':'ilustracion_procedural'})
-    print(f'  Terror: {len(originales)} escena(s) originales de ambiente creadas con Python; '
-          'no se presentan como fotografías.',flush=True)
+        escenas=_plan_visual_semantico(caso)
+        motivo=escenas[i]['motivo'] if i<len(escenas) else 'ambientacion'
+        creditos.append({'archivo':destino.name,'titulo':f'Ilustración contextual: {motivo}',
+            'pagina':'','url_original':'','licencia':'Arte procedural original creado para este video',
+            'licencia_url':'','autor':'AEROFACTUM Universal (generación algorítmica local)',
+            'atribucion':'Ilustración, no evidencia de hechos reales',
+            'puntuacion_relevancia':20,'terminos_relacionados':[motivo],
+            'consulta_origen':'generación local sin API','uso':'Ilustración ficticia de la escena',
+            'tipo_recurso':'ilustracion_procedural'})
+    print(f'  Visual contextual: {len(fotos)} ilustraciones, una por escena narrativa.',flush=True)
     return fotos,creditos
 
 
@@ -2356,6 +2422,12 @@ def buscar_fotos(caso,session,carpeta):
     from PIL import Image,ImageOps
     from io import BytesIO
     fotos=[];creditos=[];hashes=set();descartes=[]
+    if caso.get('_universal') and _univ_es_terror() and caso.get('_plan_visual'):
+        fotos,creditos=_completar_visual_terror(caso,carpeta,fotos,creditos)
+        (carpeta/'creditos_imagenes.json').write_text(json.dumps(creditos,ensure_ascii=False,indent=2),encoding='utf-8')
+        (carpeta/'imagenes_descartadas.json').write_text('[]',encoding='utf-8')
+        (carpeta/'CREDITOS_Y_LICENCIAS.txt').write_text('Escenas originales ilustradas; no fotografías de hechos reales.\n',encoding='utf-8')
+        return fotos,creditos
     configurar_reintentos_wikimedia(session)
     queries=_consultas_fotos(caso)
     # Sólo consultas ancladas al caso concreto, NUNCA búsquedas genéricas
@@ -3206,6 +3278,36 @@ def crear_cta_base(carpeta):
     return ruta
 
 
+def _foto_por_escena(caso, indice, fotos):
+    """Elige recurso con coincidencias reales entre narración y metadatos.
+
+    Para ficción de terror la correspondencia es uno a uno. Para fotografía
+    documental jamás se presenta una imagen no relacionada como hecho real.
+    """
+    if not fotos:raise RuntimeError('Montaje sin recursos visuales')
+    plan=[p for p in caso.get('_plan_visual',[]) if p[0]!='cta']
+    if caso.get('_universal') and _univ_es_terror() and plan:
+        return fotos[min(indice,len(fotos)-1)]
+    if not plan or indice>=len(plan):return fotos[indice%len(fotos)]
+    texto=plan[indice][1]
+    relevantes=_univ_tokens(texto) if caso.get('_universal') else set(_normalizar_texto_foto(texto).split())
+    referencias=caso.get('_creditos_visuales',[])
+    mejores=[]
+    for j,recurso in enumerate(fotos):
+        meta=referencias[j] if j<len(referencias) else {}
+        texto_meta=' '.join([str(meta.get('titulo','')),str(meta.get('consulta_origen','')),
+             ' '.join(map(str,meta.get('terminos_relacionados',[])))])
+        tokens=_univ_tokens(texto_meta) if caso.get('_universal') else set(_normalizar_texto_foto(texto_meta).split())
+        puntos=len(relevantes & tokens)
+        mejores.append((puntos,j))
+    maxima=max(p for p,_ in mejores)
+    if maxima:
+        candidatos=[j for p,j in mejores if p==maxima]
+        return fotos[candidatos[indice%len(candidatos)]]
+    # La falta de coincidencias se consigna para revisión en el informe visual.
+    return fotos[indice%len(fotos)]
+
+
 def renderizar_clips(bloques,fotos,caso,carpeta):
     """Montaje con cambio de plano cada 8-12 s para evitar una foto estática
     durante párrafos completos. Todos los planos usan la línea de tiempo TTS.
@@ -3225,7 +3327,12 @@ def renderizar_clips(bloques,fotos,caso,carpeta):
             if frames<=0:continue
             if b['tipo']!='cta':
                 # No usar siempre las mismas fotografías para dos planos consecutivos.
-                foto=fotos[(i+plano+numero//max(1,len(fotos)))%len(fotos)] if IMAGENES_POR_ESCENA else fotos[(numero+(i//2))%len(fotos)]
+                if caso.get('_universal') and _univ_es_terror() and caso.get('_plan_visual'):
+                    # Un párrafo -> su propia ilustración. Los planos varían el
+                    # encuadre, nunca sustituyen el sujeto por otra escena.
+                    foto=fotos[min(i,len(fotos)-1)]
+                else:
+                    foto=_foto_por_escena(caso,i,fotos)
             clip=carpeta/f'clip_{numero:04}.mp4'
             dur=frames/fps
             if b['tipo']=='cta':
@@ -3740,7 +3847,8 @@ def producir_episodio(episodio,historial):
         (carpeta/'GUION_PREVIO.txt').write_text('\n\n'.join(f'{tipo.upper()}: {txt}' for tipo,txt in plan),encoding='utf-8')
         print('PRUEBA GUION COMPLETADA, sin fotos, TTS ni publicación:',carpeta,flush=True)
         return carpeta/'GUION_PREVIO.txt'
-    print('Buscando fotos con atribución y licencias abiertas...')
+    caso['_plan_visual']=plan
+    print('Preparando imágenes coherentes con cada escena del guion...')
     try:
         fotos,creditos=buscar_fotos(caso,sesion,carpeta)
     except Exception as exc:
@@ -3764,6 +3872,7 @@ def producir_episodio(episodio,historial):
         (carpeta/'AVISO_PUBLICACION_BLOQUEADA.txt').write_text(aviso+'\n',encoding='utf-8')
         print(aviso,flush=True)
         raise EpisodioRecuperable(aviso)
+    caso['_creditos_visuales']=creditos
     if MODO_VIRAL:
         auditoria=_viral_guardar_paquete(caso,plan,carpeta,fotos)
         print('  Evaluación editorial:', 'sin alertas' if auditoria['aprobado'] else '; '.join(auditoria['advertencias']),flush=True)
