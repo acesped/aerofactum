@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM UNIVERSAL 6.0 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM UNIVERSAL 6.2 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música cinematográfica original sintetizada con Python.
-IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA.
+IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA. Para relatos de terror se admiten ilustraciones originales procedurales debidamente identificadas.
 
 Ejecución: python aerofactum.py. En GitHub Actions, ejecución cron automatizada.
 """
@@ -2085,6 +2085,117 @@ def configurar_reintentos_wikimedia(session):
     return session
 
 
+def _terror_escenas_procedurales(caso, carpeta, numero):
+    """Crea arte ORIGINAL no fotográfico sin red, modelos ni API de pago.
+
+    La ilustración nunca se presenta como documento histórico ni fotografía.
+    Se genera únicamente para un nicho explícitamente narrativo de terror.
+    Cada archivo corresponde a una composición nueva (no recortes repetidos).
+    """
+    from PIL import Image, ImageDraw, ImageFilter
+    import numpy as np
+    carpeta=Path(carpeta)
+    carpeta.mkdir(parents=True,exist_ok=True)
+    numero=max(1,min(10,int(numero)))
+    W,H=1600,900
+    titulo=caso.get('_titulo_caso',caso.get('titulo',''))
+    base=int.from_bytes(hashlib.sha256(str(caso.get('id',titulo)).encode('utf-8')).digest()[:8],'big')
+    resultados=[]
+    for indice in range(numero):
+        rng=random.Random(base+indice*7919)
+        variante=indice%5
+        paletas=[((7,17,29),(21,42,56)),((17,14,31),(53,29,57)),
+                 ((13,23,23),(33,51,46)),((24,17,21),(64,36,43)),
+                 ((12,18,31),(37,42,65))]
+        arriba,abajo=paletas[variante]
+        ys=np.linspace(0,1,H,dtype=np.float32)[:,None]
+        grad=np.empty((H,W,3),dtype=np.uint8)
+        for c in range(3):
+            fila=arriba[c]*(1-ys)+abajo[c]*ys
+            grad[:,:,c]=np.repeat(fila,W,axis=1).astype('uint8')
+        img=Image.fromarray(grad,'RGB')
+        draw=ImageDraw.Draw(img,'RGBA')
+        # Partículas de polvo y puntos estelares discretos.
+        for k in range(130):
+            x=rng.randrange(W);y=rng.randrange(H*3//5)
+            a=rng.randrange(15,70);r=rng.choice((1,1,2))
+            draw.ellipse((x-r,y-r,x+r,y+r),fill=(194,213,226,a))
+        luna_x=int(W*(0.22+0.14*(indice%4)));luna_y=145+22*(indice%3)
+        radio=72+12*(indice%3)
+        # Halo suave creado desde una capa separada.
+        halo=Image.new('RGBA',(W,H),(0,0,0,0));hd=ImageDraw.Draw(halo)
+        hd.ellipse((luna_x-radio*2,luna_y-radio*2,luna_x+radio*2,luna_y+radio*2),fill=(153,184,210,46))
+        halo=halo.filter(ImageFilter.GaussianBlur(65))
+        img=Image.alpha_composite(img.convert('RGBA'),halo)
+        draw=ImageDraw.Draw(img,'RGBA')
+        draw.ellipse((luna_x-radio,luna_y-radio,luna_x+radio,luna_y+radio),fill=(190,209,214,210))
+        draw.ellipse((luna_x-radio+15,luna_y-radio+14,luna_x+radio+15,luna_y+radio+14),fill=(22,32,43,120))
+        suelo=H*0.77
+        # Edificios, corredor o bosque según la escena; todo es geometría original.
+        if variante in (1,3):
+            x0=int(W*.56);x1=int(W*.88);y0=int(H*.32)
+            draw.polygon([(x0,7*H//10),(x0,y0+120),(x0+90,y0+40),
+                          (x0+175,y0+125),(x1,y0+55),(x1,7*H//10)],fill=(9,13,23,248))
+            for tx in (x0+40,x0+145,x1-55):
+                draw.rectangle((tx,y0+135,tx+22,y0+195),fill=(183,132,75,120))
+                draw.line((tx+11,y0+135,tx+11,y0+195),fill=(14,19,26,200),width=4)
+            draw.polygon([(0,H),(W,H),(W,7*H//10),(0,8*H//10)],fill=(8,14,20,220))
+        else:
+            draw.polygon([(0,int(.8*H)),(300,int(.68*H)),(630,int(.8*H)),
+                          (950,int(.70*H)),(W,int(.78*H)),(W,H),(0,H)],fill=(9,19,24,220))
+        # Árboles esqueléticos con siluetas y ramas no repetidas.
+        for j in range(13):
+            x=int(j*W/12+rng.randint(-75,75))
+            altura=rng.randint(260,625)
+            ybase=H+rng.randint(-160,50)
+            anchura=max(6,altura//46)
+            color=(3,10,16,225) if j%3 else (6,13,21,230)
+            draw.line((x,ybase,x+rng.randrange(-30,30),ybase-altura),fill=color,width=anchura)
+            copa_x=x+rng.randrange(-30,30);copa_y=ybase-altura
+            for nivel in range(4):
+                by=int(ybase-altura*(.48+0.13*nivel))
+                anch=int((altura/5)*(1-.17*nivel))
+                draw.line((x,by,x-anch,by-rng.randint(40,110)),fill=color,width=max(3,anchura//2))
+                draw.line((x,by,x+anch,by-rng.randint(40,110)),fill=color,width=max(3,anchura//2))
+            draw.line((x, ybase-altura//2, copa_x,copa_y),fill=color,width=anchura)
+        # Niebla tenue en bandas sobrepuestas.
+        niebla=Image.new('RGBA',(W,H),(0,0,0,0));nd=ImageDraw.Draw(niebla)
+        for banda in range(9):
+            y=int(H*(.60+.035*banda))+rng.randrange(-20,20)
+            nd.ellipse((-100-rng.randrange(200),y-30,W+rng.randrange(200),y+65),fill=(145,161,179,10+2*(banda%3)))
+        niebla=niebla.filter(ImageFilter.GaussianBlur(28))
+        img=Image.alpha_composite(img,niebla).convert('RGB')
+        destino=carpeta/f'imagen_{indice:02}.jpg'
+        img.save(destino,quality=90,optimize=True)
+        resultados.append(destino)
+    return resultados
+
+
+def _completar_visual_terror(caso,carpeta,fotos,creditos):
+    if not (caso.get('_universal') and _univ_es_terror()):
+        return fotos,creditos
+    faltan=max(0,IMAGENES_MINIMAS-len(fotos))
+    if not faltan:return fotos,creditos
+    # Generar en carpeta aparte para no sobrescribir fotos descargadas.
+    originales=_terror_escenas_procedurales(caso,Path(carpeta)/'escenas_originales',faltan)
+    for origen in originales:
+        destino=Path(carpeta)/f'imagen_{len(fotos):02}.jpg'
+        shutil.copy2(origen,destino)
+        fotos.append(destino)
+        creditos.append({'archivo':destino.name,
+           'titulo':'Escena cinematográfica original generada con Python',
+           'pagina':'','url_original':'','licencia':'Arte procedural original creado para este video',
+           'licencia_url':'','autor':'AEROFACTUM Universal (generación algorítmica local)',
+           'atribucion':'Ilustración procedimental, no fotografía ni registro de hechos reales',
+           'puntuacion_relevancia':10,'terminos_relacionados':['terror','ambientación'],
+           'consulta_origen':'generación local sin API',
+           'uso':'Ambientación ficticia del relato; no evidencia documental',
+           'tipo_recurso':'ilustracion_procedural'})
+    print(f'  Terror: {len(originales)} escena(s) originales de ambiente creadas con Python; '
+          'no se presentan como fotografías.',flush=True)
+    return fotos,creditos
+
+
 def buscar_fotos(caso,session,carpeta):
     from PIL import Image,ImageOps
     from io import BytesIO
@@ -2194,12 +2305,13 @@ def buscar_fotos(caso,session,carpeta):
             print('  Aprobada:',archivo[:65], '| puntuación:',puntos,'|',','.join(matches[:5]))
         except Exception as exc:
             descartes.append({'archivo':archivo,'razon':'No descargable o baja resolución: '+str(exc)[:100]})
+    fotos,creditos=_completar_visual_terror(caso,carpeta,fotos,creditos)
     (carpeta/'creditos_imagenes.json').write_text(
         json.dumps(creditos,ensure_ascii=False,indent=2),encoding='utf-8')
     (carpeta/'imagenes_descartadas.json').write_text(
         json.dumps(descartes[:300],ensure_ascii=False,indent=2),encoding='utf-8')
     with (carpeta/'CREDITOS_Y_LICENCIAS.txt').open('w',encoding='utf-8') as f:
-        f.write('Fotografías reales de Wikimedia Commons: se excluyen esquemas, ilustraciones, mapas, renders y gráficos por metadatos.\n')
+        f.write('Fotografías reales de Commons más, cuando corresponde a ficción de terror, ilustraciones procedurales originales identificadas como tales.\n')
         f.write('Comprobar pertinencia, licencias y atribución antes de publicar.\n\n')
         for c in creditos:
             f.write(f"{c['archivo']} | {c['titulo']} | Relevancia {c['puntuacion_relevancia']} | {','.join(c['terminos_relacionados'])} | Autor: {c['autor']} | Licencia: {c['licencia']} | {c['licencia_url']} | {c['pagina']}\n")
@@ -3306,7 +3418,7 @@ def producir_episodio(episodio,historial):
         (carpeta/'ERROR_FOTOGRAFIAS.txt').write_text(str(exc)+'\n',encoding='utf-8')
         raise EpisodioRecuperable('No hay suficientes fotografías descargables: '+str(exc)) from exc
     (carpeta/'RESUMEN_RECURSOS_VISUALES.txt').write_text(
-        f'Recursos visuales: {len(fotos)}\nFotografías reales de Wikimedia: {sum(1 for c in creditos if c.get("url_original"))}\nDiagramas e ilustraciones: 0\nObjetivo editorial: {IMAGENES_MINIMAS}\n'
+        f'Recursos visuales: {len(fotos)}\nFotografías reales de Wikimedia: {sum(1 for c in creditos if c.get("url_original"))}\nIlustraciones procedurales originales: {sum(1 for c in creditos if c.get("tipo_recurso")=="ilustracion_procedural")}\nObjetivo editorial: {IMAGENES_MINIMAS}\n'
         + ('ADVERTENCIA: Revisar variedad visual y relevancia temática antes de publicar.\n' if len(fotos)<IMAGENES_MINIMAS else 'Cantidad objetivo alcanzada.\n'),
         encoding='utf-8')
     # Una sola foto puede servir como borrador privado para revisión.
@@ -3314,7 +3426,7 @@ def producir_episodio(episodio,historial):
     # con menos fotografías pertinentes que el objetivo editorial.
     if (PUBLICAR_EN_YOUTUBE and YOUTUBE_PRIVACY in ('public','unlisted')
             and len(fotos) < IMAGENES_MINIMAS):
-        aviso=(f'PUBLICACIÓN BLOQUEADA: {len(fotos)} fotografía(s) real(es) '
+        aviso=(f'PUBLICACIÓN BLOQUEADA: {len(fotos)} recurso(s) visual(es) validado(s) '
                f'pertinente(s), mínimo editorial {IMAGENES_MINIMAS} para '
                f'YOUTUBE_PRIVACY={YOUTUBE_PRIVACY}. '
                'No se publicará un video visualmente repetitivo. '
@@ -3798,6 +3910,15 @@ def prueba_interna():
             assert len(docs)==1 and docs[0]['id']=='F1'
         assert _univ_tema_terror_pertinente('Cuento de fantasmas','Relato de miedo')
         assert not _univ_tema_terror_pertinente('Urban Terror','Videojuego de disparos')
+        if _univ_es_terror():
+            with TemporaryDirectory() as td:
+                prueba_arte=dict(prueba,id='terror-test-01')
+                arte,reg=_completar_visual_terror(prueba_arte,td,[],[])
+                assert len(arte)==IMAGENES_MINIMAS and len(reg)==IMAGENES_MINIMAS
+                assert all(x.exists() for x in arte)
+                assert all(x.get('tipo_recurso')=='ilustracion_procedural' for x in reg)
+                assert len({hashlib.sha256(x.read_bytes()).hexdigest() for x in arte})==len(arte)
+                print('OK: terror con escenas originales distintas, sin fotografías falsas')
     print('OK: 100 temas, Lorenzo, NM, fuentes, citas literales, fotos y títulos')
 
 if __name__=='__main__':
