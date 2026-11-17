@@ -139,5 +139,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=X8UNAmtFoH8",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/historias-de-terror-875370_20261117_173316_666228/¿Por qué la conspiración de Paul está muerto sigue aterrorizando a los fans.mp4"
+  },
+  {
+    "episodio": "motores-aeronauticos-8775856",
+    "caso": "motores-aeronauticos-8775856",
+    "titulo": "¿Por qué el Rolls-Royce Buzzard de 800 CV solo se vendió cien veces?",
+    "fecha_utc": "2026-11-17T18:20:50.554321+00:00",
+    "youtube_id": "xCzkJpq51A0",
+    "youtube_url": "https://www.youtube.com/watch?v=xCzkJpq51A0",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/motores-aeronauticos-8775856_20261117_181642_508523/¿Por qué el Rolls-Royce Buzzard de 800 CV solo se vendió cien veces.mp4"
   }
 ]
