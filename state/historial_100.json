@@ -69,5 +69,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=Rsq3eiNQ-Ig",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/fin_01_20261116_190356_321156/AEROFACTUM.mp4"
+  },
+  {
+    "episodio": "nav_03",
+    "caso": "nav_03",
+    "titulo": "¿Por qué el horizonte artificial se vuelve confuso cuando el AHRS falla en vuelo?",
+    "fecha_utc": "2026-11-17T11:04:34.264722+00:00",
+    "youtube_id": "HTD4Lgp5dC8",
+    "youtube_url": "https://www.youtube.com/watch?v=HTD4Lgp5dC8",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/nav_03_20261117_110052_266327/AEROFACTUM.mp4"
   }
 ]
