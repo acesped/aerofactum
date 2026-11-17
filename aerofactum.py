@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM UNIVERSAL VIRAL 7.0 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM UNIVERSAL VIRAL 7.1 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música cinematográfica original sintetizada con Python.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA. Para relatos de terror se admiten ilustraciones originales procedurales debidamente identificadas.
@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from datetime import datetime, timezone
 
 # ==================== CONFIGURACIÓN EDITABLE ====================
-NICHO = "Industria Aeronautica"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
+NICHO = "Historias de Terror"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
 TEMA = os.getenv('AERO_TEMA', 'aleatorio')       # caso específico o 'aleatorio'; por defecto no repite episodios
 VOZ = 'es-CL-LorenzoNeural'  # voz fija para TODOS los segmentos de narración
 VELOCIDAD = os.getenv('AERO_VELOCIDAD_VOZ', '-5%').strip()  # Lorenzo más pausado; configurable en GitHub Variables
@@ -97,6 +97,13 @@ ANALIZAR_YOUTUBE_ANALYTICS = os.getenv('AERO_ANALYTICS','false').lower() == 'tru
 HISTORIAL_RENDIMIENTO = os.getenv('AERO_HISTORIAL_RENDIMIENTO','true').lower() == 'true'
 # Los Shorts son archivos locales opcionales; NUNCA se suben solos.
 AERO_SHORT_DURACION_MAX = max(20,min(59,int(os.getenv('AERO_SHORT_DURACION_MAX','55'))))
+# Declaración de uso de IA en YouTube: automática y basada en el contenido.
+# "No" para fotografías no alteradas e ilustraciones evidentemente ficticias.
+# "Sí" si se incluyen escenas sintéticas realistas, personas reales manipuladas,
+# eventos reales alterados, o música generada que sea el foco principal.
+# Variables opcionales: AERO_AI_ESCENAS_REALISTAS=true, AERO_AI_PERSONAS_REALES=true,
+# AERO_AI_EVENTOS_REALES=true, AERO_AI_MUSICA_PRINCIPAL=true.
+
 
 
 LIKE_PAGE_URL = 'https://commons.wikimedia.org/wiki/File:Facebook_Like_button.svg'
@@ -3499,6 +3506,50 @@ def subir_miniatura_con_reintentos(servicio, video_id, miniatura, carpeta):
     raise RuntimeError('La miniatura NO se publicó: '+mensaje[:700])
 
 
+def _aero_indicador_positivo(valor):
+    return str(valor).strip().casefold() in ('1', 'true', 'yes', 'si', 'sí', 'on')
+
+
+def _aero_declaracion_ia_youtube(caso, creditos):
+    """Decisión verificable para YouTube `status.containsSyntheticMedia`.
+
+    No debe marcarse "No" de forma indiscriminada: si hay material visual
+    fotorealista generado, una persona real suplantada o hechos reales alterados,
+    la respuesta es "Sí". Las ilustraciones procedurales del motor de terror
+    están expresamente identificadas como NO fotográficas y no muestran personas
+    reales simuladas. Música de fondo y voz TTS genérica no se convierten en
+    supuestas imitaciones de personas reales.
+    """
+    motivos = []
+    indicadores = (
+        ('AERO_AI_ESCENAS_REALISTAS', 'escenas sintéticas realistas'),
+        ('AERO_AI_PERSONAS_REALES', 'personas reales representadas de forma artificial'),
+        ('AERO_AI_EVENTOS_REALES', 'eventos o lugares reales alterados'),
+        ('AERO_AI_MUSICA_PRINCIPAL', 'música generada como contenido principal'),
+    )
+    for env, motivo in indicadores:
+        if _aero_indicador_positivo(os.getenv(env, 'false')):
+            motivos.append(motivo)
+    for recurso in creditos or []:
+        if not isinstance(recurso, dict):
+            # Metadatos no interpretables: abstenerse de declarar "No".
+            motivos.append('procedencia visual sin identificar')
+            continue
+        tipo = str(recurso.get('tipo_recurso', '')).strip().casefold()
+        if tipo == 'ilustracion_procedural':
+            # Sólo el arte estilizado que crea esta versión del programa.
+            if recurso.get('url_original') or 'generación local' not in str(recurso.get('consulta_origen', '')).casefold():
+                motivos.append('ilustración procedimental de origen no verificable')
+            continue
+        if tipo in ('escena_fotorealista_ia', 'video_sintetico_realista', 'deepfake', 'recreacion_realista'):
+            motivos.append('recreación sintética realista identificada')
+            continue
+        if not recurso.get('url_original') and not recurso.get('pagina'):
+            motivos.append('recurso visual sin procedencia verificable')
+    requiere_declaracion = bool(motivos)
+    return requiere_declaracion, list(dict.fromkeys(motivos))
+
+
 def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,historial):
     from googleapiclient.http import MediaFileUpload
     if YOUTUBE_PRIVACY not in ('private','unlisted','public'):
@@ -3510,11 +3561,20 @@ def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,
     servicio=youtube_servicio()
     validar_canal_youtube(servicio)
     titulo=caso['titulo'][:100]
+    ia_requiere_si, ia_motivos = _aero_declaracion_ia_youtube(caso,creditos)
+    (Path(carpeta)/'DECLARACION_IA_YOUTUBE.json').write_text(json.dumps({
+        'ai_use': 'Yes' if ia_requiere_si else 'No',
+        'status.containsSyntheticMedia': ia_requiere_si,
+        'motivos': ia_motivos,
+        'criterio': 'YouTube: declarar contenido sintético o alterado que parezca real'
+    },ensure_ascii=False,indent=2),encoding='utf-8')
+    print('YouTube AI use:', 'Yes' if ia_requiere_si else 'No', '|', ', '.join(ia_motivos) or 'sin indicios de contenido sintético realista',flush=True)
     cuerpo={'snippet':{'title':titulo,
          'description':descripcion_validada,
          'categoryId':('28' if _nicho_es_aviacion() else '27'),'defaultLanguage':'es',
          'tags':['AEROFACTUM', NICHO[:35], caso['categoria'][:35], caso.get('_titulo_caso',caso['titulo'])[:35]]},
-         'status':{'privacyStatus':YOUTUBE_PRIVACY,'selfDeclaredMadeForKids':False}}
+         'status':{'privacyStatus':YOUTUBE_PRIVACY,'selfDeclaredMadeForKids':False,
+                   'containsSyntheticMedia':ia_requiere_si}}
     # Solo videos nuevos: una vez obtenido el ID, se guarda de inmediato para impedir duplicados.
     solicitud=servicio.videos().insert(part='snippet,status',body=cuerpo,
         media_body=MediaFileUpload(str(video),mimetype='video/mp4',chunksize=8*1024*1024,resumable=True))
@@ -4219,6 +4279,13 @@ def prueba_interna():
                     raise AssertionError('La imagen CC BY-SA sin créditos no fue rechazada')
                 assert len({hashlib.sha256(x.read_bytes()).hexdigest() for x in arte})==len(arte)
                 print('OK: terror con escenas originales distintas, sin fotografías falsas')
+    # Test de la declaración automatizada de YouTube (sin subir videos).
+    prueba_procedural={'tipo_recurso':'ilustracion_procedural','consulta_origen':'generación local sin API','url_original':''}
+    assert _aero_declaracion_ia_youtube({},[prueba_procedural])[0] is False
+    assert _aero_declaracion_ia_youtube({},[{'url_original':'https://commons.wikimedia.org/wiki/Sample.jpg'}])[0] is False
+    assert _aero_declaracion_ia_youtube({},[{'tipo_recurso':'escena_fotorealista_ia'}])[0] is True
+    assert _aero_declaracion_ia_youtube({},[{'archivo':'desconocida.png'}])[0] is True
+    print('OK: declaración AI use No para arte estilizado; Yes si es fotorealista o de origen desconocido')
     # Controles de regresión del paquete viral (sin API ni publicación).
     assert len(_viral_variantes_titulos({'titulo':'¿Por qué ocurre este fenómeno tan extraño?', '_titulo_caso':'El fenómeno extraño'})) >= 1
     assert 'comentarios' in _viral_pregunta_contextual({'titulo':'Leyendas', '_titulo_caso':'Leyendas'})
