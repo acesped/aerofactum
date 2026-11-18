@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from datetime import datetime, timezone
 
 # ==================== CONFIGURACIÓN EDITABLE ====================
-NICHO = "Motores Aeronáuticos"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
+NICHO = "Datos Industria Aeronáutica"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
 TEMA = os.getenv('AERO_TEMA', 'aleatorio')       # caso específico o 'aleatorio'; por defecto no repite episodios
 VOZ = 'es-CL-LorenzoNeural'  # voz fija para TODOS los segmentos de narración
 VELOCIDAD = os.getenv('AERO_VELOCIDAD_VOZ', '-5%').strip()  # Lorenzo más pausado; configurable en GitHub Variables
