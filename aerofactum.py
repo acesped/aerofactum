@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM UNIVERSAL 8.4 · CURIOSITY ENGINE · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM UNIVERSAL 8.5 · CURIOSITY ENGINE · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música cinematográfica original sintetizada con Python.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA. Para relatos de terror se admiten ilustraciones originales procedurales debidamente identificadas.
@@ -69,7 +69,7 @@ AERO_CACHE_DOCUMENTAL = os.getenv('AERO_CACHE_DOCUMENTAL','true').lower() == 'tr
 AERO_CACHE_DIR = Path(os.getenv('AERO_CACHE_DIR','state/aero_documentos'))
 AERO_CACHE_DIAS = max(1,int(os.getenv('AERO_CACHE_DIAS','45')))
 AERO_CACHE_VERSION = 5  # relevancia financiera específica y extracción mejorada
-VERSION_SCRIPT = "8.4"
+VERSION_SCRIPT = "8.5"
 AERO_GUIONES_DIR = Path(os.getenv("AERO_GUIONES_DIR", "state/aero_guiones"))
 AERO_GUIONES_DIAS = max(1, min(30, int(os.getenv("AERO_GUIONES_DIAS", "14"))))
 AERO_MAX_DOCUMENTOS = max(1,min(8,int(os.getenv('AERO_MAX_DOCUMENTOS','4'))))
@@ -2742,6 +2742,16 @@ def buscar_fotos(caso,session,carpeta):
             'Wikimedia Commons limitó el acceso HTTP 429. No insistir con más búsquedas; '
             'reprogramar la ejecución o utilizar fotografías ya verificadas con licencias y atribución.\n',
             encoding='utf-8')
+    if caso.get('_plan_visual'):
+        escenas=[x for x in caso['_plan_visual'] if x[0]!='cta']
+        candidatos_validos=[]
+        for candidato in candidatos:
+            _,archivo,info,*_=candidato
+            evidencia=_metadatos_objeto_83(archivo,info.get('extmetadata') or {})
+            if any(_score_escena_83(caso,i,evidencia)[0]>0 for i in range(len(escenas))):
+                candidatos_validos.append(candidato)
+            else:descartes.append({'archivo':archivo,'razon':'Sin correspondencia con ninguna escena narrada (8.5)'})
+        candidatos=candidatos_validos
     candidatos=_ordenar_candidatos_83(caso,candidatos)
     print(f'  Commons: {len(candidatos)} fotografías candidatas tras {len(queries)} consultas planificadas.',flush=True)
     for puntos,archivo,info,url,matches,busqueda in candidatos:
@@ -3535,7 +3545,7 @@ def _foto_por_escena(caso, indice, fotos):
     mapa=caso.get('_mapa_visual',[])
     if indice<len(mapa):return Path(mapa[indice])
     if caso.get('_universal') and _univ_es_terror():return fotos[min(indice,len(fotos)-1)]
-    return fotos[0]
+    raise RuntimeError(f'Escena {indice+1} sin asignación visual verificada')
 
 
 def renderizar_clips(bloques,fotos,caso,carpeta):
@@ -4100,8 +4110,15 @@ def producir_episodio(episodio,historial):
     if MODO_VIRAL:
         auditoria=_viral_guardar_paquete(caso,plan,carpeta,fotos)
         print('  Evaluación editorial:', 'sin alertas' if auditoria['aprobado'] else '; '.join(auditoria['advertencias']),flush=True)
-    thumb=miniatura(caso,fotos,carpeta)
-    alternativas_miniaturas=_viral_miniaturas(caso,fotos,carpeta) if MODO_VIRAL else []
+    fotos_portada=fotos
+    if caso.get('_mapa_visual'):
+        asignadas=set(caso['_mapa_visual'])
+        fotos_portada=[f for f in fotos if str(f) in asignadas] or fotos
+        tema=_visual_tokens_85(caso.get('_titulo_caso',caso['titulo']))|_VIS_85_TOPIC.get(_tema_id_actual(caso),set())
+        idx={str(f):j for j,f in enumerate(fotos)}
+        fotos_portada=sorted(fotos_portada,key=lambda f:len(tema&_visual_tokens_85(creditos[idx[str(f)]].get('titulo','')+' '+creditos[idx[str(f)]].get('objeto_visual',''))),reverse=True)
+    thumb=miniatura(caso,fotos_portada,carpeta)
+    alternativas_miniaturas=_viral_miniaturas(caso,fotos_portada,carpeta) if MODO_VIRAL else []
     if alternativas_miniaturas:
         print('  Miniaturas candidatas locales:',len(alternativas_miniaturas),flush=True)
         paquete=carpeta/'PAQUETE_VIRAL.json'
@@ -4338,7 +4355,7 @@ def _consultas_fotos(caso):
         contextual=_consultas_visuales_83(caso)
         return list(dict.fromkeys(contextual+base))
     titulo=caso.get('_titulo_caso',caso['titulo'])
-    return _curiosity_consultas_fotos(caso,titulo)
+    return list(dict.fromkeys(_consultas_visuales_83(caso)+_curiosity_consultas_fotos(caso,titulo)))
 
 def evaluar_relevancia_foto(caso,titulo,metadata,busqueda):
     if not caso.get('_universal'):
@@ -4796,7 +4813,7 @@ def _curiosity_asignar_escenas(caso,fotos,creditos,carpeta):
                 opciones.append((score-2*usos.get(j,0),-usos.get(j,0),j,hits))
         if opciones:
             _,_,j,hits=max(opciones); usos[j]=usos.get(j,0)+1; path=fotos[j]
-            registros.append({'escena':i+1,'archivo':Path(path).name,'criterio':'coincidencia textual en metadatos, no comprobación visual directa','coincidencias':hits})
+            registros.append({'escena':i+1,'archivo':Path(path).name,'criterio':'coincidencia textual en metadatos, no comprobación visual directa','coincidencias':hits,'narracion':txt,'consulta_visual':consultas[i] if i<len(consultas) else '', 'titulo_recurso':creditos[j].get('titulo','')})
         else:
             # Text card is deliberately not a documentary photograph.
             path=Path(carpeta)/f'tarjeta_contextual_{i:02}.jpg'
@@ -4805,7 +4822,7 @@ def _curiosity_asignar_escenas(caso,fotos,creditos,carpeta):
             d.rectangle((100,155,115,720),fill='#43c7dc')
             escribir_en_caja(d,frase,(155,205,1480,725),cargar_fuente(56),'#ffffff',max_lineas=5,centrar_vertical=True)
             im.save(path,quality=92)
-            registros.append({'escena':i+1,'archivo':path.name,'criterio':'tarjeta textual del relato; sin fotografía atingente','texto':frase})
+            registros.append({'escena':i+1,'archivo':path.name,'criterio':'tarjeta textual del relato; sin fotografía atingente','texto':frase,'narracion':txt,'consulta_visual':consultas[i] if i<len(consultas) else ''})
         mapa.append(str(path))
     caso['_mapa_visual']=mapa
     (Path(carpeta)/'PLAN_VISUAL_ESCENAS.json').write_text(json.dumps(registros,ensure_ascii=False,indent=2),encoding='utf-8')
@@ -5048,26 +5065,80 @@ def _tokens_83(txt):
 def _metadatos_objeto_83(titulo,meta):
     return str(titulo)+' '+' '.join(limpiar_html(meta.get(k,{}).get('value','')) for k in ('ImageDescription','ObjectName'))
 
+_VIS_85_STOP=set("""cada puede pueden permite permiten debe deben importante importante
+impacto efectos efecto manera forma caso casos ejemplo ejemplos proceso procesos
+uso usos usado utilizados utiliza utilizado using used use new nuevo nueva
+first segundo second years anos year tiempo time during durante after antes
+before other otros otras more menos mayor menor larger small large high low
+muchos muchas different different mismo misma parte partes types tipo tipos
+shows show shown including includes include contiene contiene contains
+people person personas persona public private information technical
+technology research study data datos analysis analisis resultado resultados
+modern modernos design diseno work trabajo system systems operation operations
+operacion operaciones aircraft airplane aviation airport airline airliner flight
+air airbus boeing fleet route transport aircrafts planes plane passenger
+commercial civil tecnologia industria equipment technology context photograph
+photo photograph historical museum image file wikimedia commons""".split())
+# Concepts that identify an object, rather than manufacturer or general industry.
+_VIS_85_EXTRA={
+ 'hydrogen':('hidrogeno','hydrogen'), 'cryogenic':('criogenico','criogenica','criogenicos','cryogenic'),
+ 'fuel_cell':('pila de combustible','pilas de combustible','celda de combustible','fuel cell','fuel cells'),
+ 'bypass':('bypass','derivacion'), 'fan':('ventilador','ventiladores','fan','fans'),
+ 'turbofan':('turbofan','turbofans'), 'battery':('bateria','baterias','battery','batteries'),
+ 'fuel':('combustible','combustibles','fuel','kerosene','queroseno'),
+ 'refueling':('repostaje','reabastecimiento','refueling','refuelling'),
+ 'seat':('asiento','asientos','seat','seats'), 'cabin':('cabina','cabinas','cabin','cabins'),
+ 'runway':('pista','pistas','runway','runways'), 'taxiway':('rodaje','taxiway','taxiways'),
+ 'tire':('neumatico','neumaticos','tire','tires','tyre','tyres'),
+ 'landing_gear':('tren de aterrizaje','landing gear'),
+ 'logbook':('registro tecnico','libro tecnico','logbook','technical log','maintenance log'),
+ 'dispatch':('despachador','despachadores','flight dispatcher','flight dispatch','dispatch center'),
+ 'control_tower':('torre de control','control tower'),
+ 'corrosion':('corrosion','corroded'), 'borescope':('boroscopio','boroscopica','borescope','borescope inspection'),
+ 'simulator':('simulador','simuladores','simulator','simulators'),
+ 'rask':('rask','revenue per available seat'), 'tank':('tanque','tanques','tank','tanks','deposito'),
+}
+_VIS_85_TOPIC={
+ 'future_03':{'hydrogen','cryogenic','fuel_cell'},
+ 'motor_04':{'bypass','turbofan'},
+ 'mnt_06':{'tire','landing_gear'},
+ 'mnt_07':{'logbook'}, 'mnt_09':{'borescope'}, 'mnt_10':{'corrosion'},
+ 'atc_09':{'dispatch'}, 'atc_01':{'control_tower'}, 'future_08':{'simulator'},
+ 'fin_05':{'fuel','refueling'}, 'fin_03':{'seat','cabin','rask'},
+ 'future_02':{'battery','electric'},
+}
+def _visual_tokens_85(txt):
+    n=_univ_normalizar(str(txt)); t=_tokens_83(n)-_VIS_85_STOP-_VIS_83_GENERIC
+    for concept,aliases in _VIS_85_EXTRA.items():
+        if any(re.search(r'\b'+re.escape(a)+r'\b',n) for a in aliases):t.add(concept)
+    return t
+
 def _score_escena_83(caso,i,evidencia):
     plan=[x for x in caso.get('_plan_visual',[]) if x[0]!='cta']
     if i>=len(plan):return 0,[]
-    txt=plan[i][1]
-    narr=_tokens_83(txt)-_VIS_83_GENERIC
-    met=_tokens_83(evidencia)-_VIS_83_GENERIC
+    txt=plan[i][1]; narr=_visual_tokens_85(txt); met=_visual_tokens_85(evidencia)
     q=caso.get('_consultas_escenas',[])
-    consulta=_tokens_83(q[i])-_VIS_83_GENERIC if i<len(q) else set()
-    # Una búsqueda sugerida por IA no prueba el contenido de una foto.
-    # Sólo aporta peso si coincide también con lo narrado y los metadatos.
-    hits=narr&met; corroborados=hits&consulta; fuertes=hits&_VIS_83_STRONG
+    consulta=_visual_tokens_85(q[i]) if i<len(q) else set()
+    hits=narr&met; fuertes=hits&(_VIS_83_STRONG|set(_VIS_85_EXTRA))
+    corroborados=hits&consulta
+    n=_univ_normalizar(evidencia)
     if _es_financiero(caso):
-        n=_univ_normalizar(evidencia)
         if _VIS_83_MILITAR.search(n) or not _VIS_83_CIVIL.search(n):return 0,[]
         if not fuertes:return 0,[]
-        return 5*len(fuertes)+2*len(corroborados)+len(hits),sorted(hits)
-    # Un componente técnico explícito es suficiente con contexto del caso;
-    # para conceptos no catalogados todavía se requieren dos coincidencias.
-    if len(hits)>=2 or (fuertes and corroborados):
-        return 3*len(hits)+2*len(corroborados)+2*len(fuertes),sorted(hits)
+    requeridos=_VIS_85_TOPIC.get(_tema_id_actual(caso),set())
+    # If scene explicitly concerns the main subject, it must occur in the image.
+    # Otherwise permit specifically named physical subobjects, never generic aviation.
+    if requeridos & narr and not (requeridos & hits):return 0,[]
+    if fuertes:
+        # A bare engine, truck or tank is insufficient when the scene names a
+        # specialised subject: require either that subject or another precise part.
+        precisos=fuertes-{'engine','truck','tank','wing','fleet','route','gate','terminal','ticket'}
+        if not precisos and not (fuertes&corroborados):return 0,[]
+        return 6*len(precisos)+3*len(fuertes)+2*len(corroborados),sorted(fuertes|corroborados)
+    # Unknown niches: require two meaningful matches and a corroborating visual
+    # query or explicit topic, not just two generic shared words.
+    tema=_visual_tokens_85(caso.get('_titulo_caso',caso.get('titulo','')))
+    if len(hits)>=2 and (corroborados or hits&tema):return 3*len(hits)+2*len(corroborados),sorted(hits)
     return 0,[]
 
 def _foto_financiera_83(caso,titulo,meta):
@@ -5087,8 +5158,13 @@ def _consultas_visuales_83(caso):
     # Buscar sujetos concretos, sin prefijar el título español a cada consulta.
     for i,(_,txt) in enumerate(plan):
         n=_tokens_83(txt); q=str(sugeridas[i]).strip()[:100] if i<len(sugeridas) else ''
-        if q and (n&_tokens_83(q))-_VIS_83_GENERIC:
-            salida.append(q+(' commercial airline' if _es_financiero(caso) else ' aviation'))
+        if q and (_visual_tokens_85(txt)&_visual_tokens_85(q)):
+            salida.append(q+(' commercial airline' if _es_financiero(caso) else (' aviation' if not caso.get('_universal') or _motor_nicho(NICHO) else '')))
+        if not caso.get('_universal') or _motor_nicho(NICHO):
+            especificos=_visual_tokens_85(txt)&(_VIS_83_STRONG|set(_VIS_85_EXTRA))
+            principales=especificos&_VIS_85_TOPIC.get(_tema_id_actual(caso),set())
+            for concepto in sorted(principales or especificos-{'engine','truck','tank','wing','fleet','route','gate','terminal','ticket'})[:2]:
+                salida.append('aircraft '+concepto.replace('_',' '))
         if _es_financiero(caso):
             for palabra,consulta in [('fuel','commercial airliner jet fuel refueling'),('refueling','airport airline refueling truck'),('seat','commercial airplane passenger cabin seats'),('passenger','commercial airport passenger boarding'),('cargo','airline cargo loading aircraft'),('fleet','commercial airline aircraft airport apron'),('baggage','commercial airport baggage loading'),('tank','commercial aircraft fuel tank')]:
                 if palabra in n:salida.append(consulta)
@@ -5189,6 +5265,18 @@ def _self_test_84():
         else:raise AssertionError('No debe aceptar un guion inferior al mínimo absoluto')
     print('OK: guion de 397 palabras aceptado; citas inventadas y guiones demasiado cortos rechazados')
 
+def _self_test_85():
+    caso={'titulo':'Hidrógeno en aviación','id':'future_03','_plan_visual':[('gancho','El hidrógeno líquido exige tanques criogénicos y un diseño distinto del avión.'),('desarrollo','Las pilas de combustible convierten hidrógeno en electricidad.'),('conclusion','Este cambio tiene consecuencias importantes para el futuro.')]}
+    assert _score_escena_83(caso,0,'Boeing jet aircraft conventional fuel tank airport')[0]==0
+    assert _score_escena_83(caso,0,'Hydrogen aircraft cryogenic tank')[0]>0
+    assert _score_escena_83(caso,1,'Aircraft jet fuel refueling truck')[0]==0
+    assert _score_escena_83(caso,1,'Hydrogen fuel cell demonstrator')[0]>0
+    assert _score_escena_83(caso,2,'Important future change aircraft')[0]==0
+    otro={'titulo':'Bypass ratio','id':'motor_04','_plan_visual':[('gancho','El bypass de un turbofán separa dos flujos de aire.')]}
+    assert _score_escena_83(otro,0,'Aircraft conventional piston engine')[0]==0
+    assert _score_escena_83(otro,0,'High bypass turbofan engine')[0]>0
+    print('OK: filtro visual 8.5, hidrógeno, bypass y rechazo de coincidencias genéricas')
+
 if __name__=='__main__':
     print(f'AEROFACTUM UNIVERSAL {VERSION_SCRIPT} | Nicho: {NICHO}',flush=True)
     if '--self-test' in sys.argv:
@@ -5197,6 +5285,7 @@ if __name__=='__main__':
         _self_test_81()
         _self_test_83()
         _self_test_84()
+        _self_test_85()
         from unittest.mock import patch
         with patch.dict(globals(),{'NICHO':'Astronomía'}):
             ejemplo={'id':'prueba','titulo':'Agujeros negros','_universal':True,'_titulo_caso':'Agujeros negros'}
