@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM UNIVERSAL 8.3 · CURIOSITY ENGINE · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM UNIVERSAL 8.4 · CURIOSITY ENGINE · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música cinematográfica original sintetizada con Python.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA. Para relatos de terror se admiten ilustraciones originales procedurales debidamente identificadas.
@@ -35,7 +35,9 @@ IMAGENES_MINIMAS = max(2,min(10,int(os.getenv('AERO_IMAGENES_MINIMAS','4'))))  #
 IMAGENES_MINIMAS_ABSOLUTAS = 1 # mínimo para crear borradores privados; publicación no privada exige IMAGENES_MINIMAS
 MAX_IMAGENES = 10
 AERO_PALABRAS_MIN = max(235, min(900, int(os.getenv("AERO_PALABRAS_MIN", "440"))))
-AERO_PALABRAS_MIN_ACEPTABLE = AERO_PALABRAS_MIN if os.getenv("AERO_PALABRAS_MIN") else max(235, AERO_PALABRAS_MIN-40)
+# El objetivo editorial no es una barrera rígida. Un mínimo absoluto separado
+# evita gastar cuotas para añadir relleno a un guion sustancial y verificado.
+AERO_PALABRAS_MIN_ACEPTABLE = max(112, min(AERO_PALABRAS_MIN, int(os.getenv("AERO_PALABRAS_MIN_ABSOLUTO", "235"))))
 AERO_PALABRAS_MAX = min(1200, max(AERO_PALABRAS_MIN+80, int(os.getenv("AERO_PALABRAS_MAX", "780"))))
 AERO_COLA_DIR = Path(os.getenv("AERO_COLA_DIR", "state/pendientes_youtube"))
 VERIFICACION_OBLIGATORIA = False # si True, detiene cuando no hay referencias oficiales accesibles
@@ -54,6 +56,7 @@ AERO_OPENROUTER_MAX_TOKENS = max(4000, min(16000, int(os.getenv('AERO_OPENROUTER
 AERO_OPENROUTER_WEB_SEARCH = os.getenv('AERO_OPENROUTER_WEB_SEARCH', 'false').strip().lower() == 'true'
 AERO_IA_MIN_FUENTES = max(1, int(os.getenv('AERO_IA_MIN_FUENTES', '1')))
 AERO_IA_MIN_DATOS = max(2, int(os.getenv('AERO_IA_MIN_DATOS', '3')))
+AERO_APLAZAR_SIN_IA = os.getenv('AERO_APLAZAR_SIN_IA','true').lower() == 'true'
 AERO_IA_DRY_RUN = os.getenv('AERO_IA_DRY_RUN', 'false').lower() == 'true'
 AERO_INVESTIGACION_WEB = os.getenv('AERO_INVESTIGACION_WEB', 'auto').strip().lower()  # auto, gemini, groq, openrouter, ambas, todas, off
 AERO_BUSQUEDA_MAX_URLS = max(3,min(24,int(os.getenv('AERO_BUSQUEDA_MAX_URLS','12'))))
@@ -66,7 +69,7 @@ AERO_CACHE_DOCUMENTAL = os.getenv('AERO_CACHE_DOCUMENTAL','true').lower() == 'tr
 AERO_CACHE_DIR = Path(os.getenv('AERO_CACHE_DIR','state/aero_documentos'))
 AERO_CACHE_DIAS = max(1,int(os.getenv('AERO_CACHE_DIAS','45')))
 AERO_CACHE_VERSION = 5  # relevancia financiera específica y extracción mejorada
-VERSION_SCRIPT = "8.3"
+VERSION_SCRIPT = "8.4"
 AERO_GUIONES_DIR = Path(os.getenv("AERO_GUIONES_DIR", "state/aero_guiones"))
 AERO_GUIONES_DIAS = max(1, min(30, int(os.getenv("AERO_GUIONES_DIAS", "14"))))
 AERO_MAX_DOCUMENTOS = max(1,min(8,int(os.getenv('AERO_MAX_DOCUMENTOS','4'))))
@@ -612,7 +615,16 @@ def _openrouter_chat(prompt, *, busqueda=False, limitar_razonamiento=True):
             raise OpenRouterSalidaAgotada('OpenRouter agotó max_tokens sin entregar guion JSON'+consumido)
         raise RuntimeError('OpenRouter devolvió contenido vacío (finish_reason='+str(motivo)+')'+consumido)
     if motivo=='length':
-        raise OpenRouterSalidaAgotada('OpenRouter entregó respuesta truncada antes de cerrar JSON'+consumido)
+        # Solo aprovechar una respuesta que ya contiene un objeto JSON cerrado.
+        # No aplicar json_repair a una salida cortada por el proveedor.
+        if busqueda:
+            raise OpenRouterSalidaAgotada('OpenRouter agotó la salida de búsqueda'+consumido)
+        try:
+            completo=json.loads(str(content).strip())
+            if not isinstance(completo,dict):raise ValueError('No es un objeto')
+        except (ValueError,TypeError):
+            raise OpenRouterSalidaAgotada('OpenRouter entregó respuesta truncada antes de cerrar JSON'+consumido)
+        print('  OpenRouter: objeto JSON completo pese al límite de salida; se aplicará la validación íntegra.',flush=True)
     return str(content)
 
 
@@ -1589,6 +1601,8 @@ def _validar_guion_ia(datos,documentos,caso):
         frases.append(norm)
     if not AERO_PALABRAS_MIN_ACEPTABLE<=total<=AERO_PALABRAS_MAX:
         raise ValueError(f'Guion de {total} palabras fuera de objetivo ({AERO_PALABRAS_MIN_ACEPTABLE} a {AERO_PALABRAS_MAX}).')
+    if total<AERO_PALABRAS_MIN:
+        print(f'  Extensión: {total} palabras; por debajo del objetivo editorial {AERO_PALABRAS_MIN}, dentro del rango aceptable. Continuando validación.',flush=True)
     from difflib import SequenceMatcher
     for a in range(len(frases)):
         for b in range(a+1,len(frases)):
@@ -1846,7 +1860,9 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                 # del siguiente intento; nunca usar razonamiento como guion.
                 if motor=='openrouter' and isinstance(e,OpenRouterSalidaAgotada):
                     if intento==1 and _openrouter_preparar_alternativo():
-                        prompt_motor=prompt + '\nResponde inmediatamente con el objeto JSON completo, sin análisis, sin pasos previos ni explicaciones.'
+                        # La instrucción compacta conserva el esquema y las citas verificadas.
+                        breve={k:instruccion[k] for k in ('tarea','tema','categoria','tipo_narrativo','citas_verificadas_para_elegir','normas','estructura')}
+                        prompt_motor='Devuelve solo el objeto JSON completo. Sin análisis externo. '+json.dumps(breve,ensure_ascii=False,separators=(',',':'))
                         continue
                     _AERO_IA_INHABILITADOS[motor]=mensaje[:350]
                     print('  OpenRouter: salida agotada y sin alternativa gratuita utilizable; suspendido para evitar más consumo.',flush=True)
@@ -4561,12 +4577,17 @@ def ejecutar():
         # Fallos documentales y visuales son recuperables antes de TTS/subida.
         # Errores posteriores pueden producir cargas parciales y NO se reintentan.
     OUTPUT_BASE.mkdir(parents=True,exist_ok=True)
+    aplazado=(len(resultados)<cantidad and bool(_AERO_IA_INHABILITADOS) and not _aero_motores_guion())
     (OUTPUT_BASE/'ULTIMO_INFORME_EJECUCION.json').write_text(json.dumps({
+        'estado': 'aplazado_sin_ia' if aplazado else ('completado' if len(resultados)>=cantidad else 'incompleto'),
         'fecha_utc':datetime.now(timezone.utc).isoformat(),
         'videos_completados':len(resultados),'videos_solicitados':cantidad,
         'fallos_preproduccion':fallos,'proveedores_ia_inhabilitados':_AERO_IA_INHABILITADOS,
         'resultados':[str(r) for r in resultados]
     },ensure_ascii=False,indent=2),encoding='utf-8')
+    if aplazado and AERO_APLAZAR_SIN_IA:
+        print(f'PRODUCCIÓN APLAZADA: {len(resultados)}/{cantidad} videos; proveedores IA agotados o indisponibles. No se publica ni se registra como completado ningún tema fallido. Revisar ULTIMO_INFORME_EJECUCION.json.',flush=True)
+        return resultados
     if len(resultados)<cantidad:
         raise RuntimeError(f'Se completaron {len(resultados)}/{cantidad} videos. '
                            f'Se probaron hasta {max_intentos} temas. '
@@ -5142,6 +5163,32 @@ def _self_test_83():
     assert _aero_documento_relevante('Generic flight airport pilots aviation aircraft engines. '*6,rask)==0
     print('OK: finanzas civiles, asignación contextual, RASK y recuperación de guiones aprobados')
 
+def _self_test_84():
+    from unittest.mock import patch
+    tipos=['gancho','pregunta','contexto','pista','analisis','desarrollo','aplicacion','conclusion']
+    citas=['Hydrogen aircraft use alternative propulsion technologies.',
+           'Liquid hydrogen requires dedicated storage and handling infrastructure.',
+           'Certification requires assessment of the aircraft systems.']
+    palabras=['hidrógeno','almacenamiento','propulsión','infraestructura','seguridad','certificación','operaciones','balance']
+    # Fixture artificial únicamente para verificar la barrera de palabras.
+    bloques=[{'tipo':t,'texto':' '.join([w+str(j) for j in range(50 if i<5 else 49)])} for i,(t,w) in enumerate(zip(tipos,palabras))]
+    datos={'bloques':bloques,'hechos_con_evidencia':[{'fuente_id':'F1','cita_textual':c,'afirmacion':'Afirmación documental de prueba número '+str(i)} for i,c in enumerate(citas)]}
+    docs=[{'id':'F1','texto':' '.join(citas)}]
+    assert sum(len(b['texto'].split()) for b in bloques)==397
+    with patch.dict(globals(),{'AERO_PALABRAS_MIN':440,'AERO_PALABRAS_MIN_ACEPTABLE':235,'AERO_PALABRAS_MAX':780,'AERO_IA_MIN_DATOS':3}):
+        assert len(_validar_guion_ia(datos,docs,{}))==8
+        import copy
+        malo=copy.deepcopy(datos);malo['hechos_con_evidencia'][0]['cita_textual']='Cita inventada que no figura en el documento original.'
+        try:_validar_guion_ia(malo,docs,{})
+        except ValueError:pass
+        else:raise AssertionError('No debe aceptar una cita inventada')
+        corto=copy.deepcopy(datos)
+        for b in corto['bloques']:b['texto']=' '.join(b['texto'].split()[:20])
+        try:_validar_guion_ia(corto,docs,{})
+        except ValueError:pass
+        else:raise AssertionError('No debe aceptar un guion inferior al mínimo absoluto')
+    print('OK: guion de 397 palabras aceptado; citas inventadas y guiones demasiado cortos rechazados')
+
 if __name__=='__main__':
     print(f'AEROFACTUM UNIVERSAL {VERSION_SCRIPT} | Nicho: {NICHO}',flush=True)
     if '--self-test' in sys.argv:
@@ -5149,6 +5196,7 @@ if __name__=='__main__':
         _self_test_8()
         _self_test_81()
         _self_test_83()
+        _self_test_84()
         from unittest.mock import patch
         with patch.dict(globals(),{'NICHO':'Astronomía'}):
             ejemplo={'id':'prueba','titulo':'Agujeros negros','_universal':True,'_titulo_caso':'Agujeros negros'}
