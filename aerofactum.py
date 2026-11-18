@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM UNIVERSAL 8.0 · CURIOSITY ENGINE · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM UNIVERSAL 8.1 · CURIOSITY ENGINE · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música cinematográfica original sintetizada con Python.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA. Para relatos de terror se admiten ilustraciones originales procedurales debidamente identificadas.
@@ -494,6 +494,54 @@ class OpenRouterSalidaAgotada(RuntimeError):
     """La solicitud agotó sus tokens generando razonamiento, no el guion."""
 
 
+_OPENROUTER_ALTERNATIVO = None
+_OPENROUTER_MODELO_REAL = None
+_OPENROUTER_ALTERNATIVO_INTENTADO = False
+
+
+def _openrouter_elegir_gratuito(modelos, excluido=''):
+    candidatos=[]
+    for m in modelos:
+        try:
+            mid=str(m['id']); precio=m['pricing']
+            parametros=set(m.get('supported_parameters') or [])
+            salida=(m.get('architecture') or {}).get('output_modalities') or []
+            maxsalida=(m.get('top_provider') or {}).get('max_completion_tokens')
+            if not mid.endswith(':free') or mid==excluido:continue
+            if 'text' not in salida:continue
+            if float(precio['prompt'])!=0 or float(precio['completion'])!=0:continue
+            if float(precio.get('request') or 0)!=0:continue
+            if parametros & {'reasoning','include_reasoning','reasoning_effort'}:continue
+            if m.get('is_reasoning') or (m.get('architecture') or {}).get('is_reasoning'):continue
+            if int(m.get('context_length') or 0)<8192:continue
+            if maxsalida is not None and int(maxsalida)<3000:continue
+            candidatos.append((('response_format' in parametros), int(m.get('context_length') or 0), mid))
+        except (ValueError,TypeError,KeyError):continue
+    if not candidatos:return None
+    json_ok,_,mid=max(candidatos)
+    return {'id':mid,'json':json_ok}
+
+
+def _openrouter_preparar_alternativo():
+    global _OPENROUTER_ALTERNATIVO, _OPENROUTER_ALTERNATIVO_INTENTADO
+    # Respect explicit model choice; only switch within the free router family.
+    if OPENROUTER_MODELO!='openrouter/free' and not OPENROUTER_MODELO.endswith(':free'):return False
+    if _OPENROUTER_ALTERNATIVO_INTENTADO:return False
+    _OPENROUTER_ALTERNATIVO_INTENTADO=True
+    try:
+        import requests
+        r=requests.get('https://openrouter.ai/api/v1/models',timeout=(5,15))
+        r.raise_for_status()
+        _OPENROUTER_ALTERNATIVO=_openrouter_elegir_gratuito(r.json().get('data',[]), _OPENROUTER_MODELO_REAL or OPENROUTER_MODELO)
+    except Exception as exc:
+        print('  OpenRouter: catálogo de modelos alternativos no disponible:',str(exc)[:150],flush=True)
+        return False
+    if _OPENROUTER_ALTERNATIVO:
+        print('  OpenRouter: siguiente intento con modelo gratuito explícito sin parámetros de razonamiento:',_OPENROUTER_ALTERNATIVO['id'],flush=True)
+        return True
+    return False
+
+
 def _openrouter_chat(prompt, *, busqueda=False, limitar_razonamiento=True):
     """Chat Completions; controla razonamiento para reservar tokens al JSON.
 
@@ -503,11 +551,13 @@ def _openrouter_chat(prompt, *, busqueda=False, limitar_razonamiento=True):
     import requests
     key=os.getenv('OPENROUTER_API_KEY','').strip()
     if not key:raise RuntimeError('OPENROUTER_API_KEY no configurada')
+    global _OPENROUTER_MODELO_REAL
+    alternativo=_OPENROUTER_ALTERNATIVO if not busqueda else None
     payload={
-        'model':OPENROUTER_MODELO,
+        'model':alternativo['id'] if alternativo else OPENROUTER_MODELO,
         'messages':[
-            {'role':'system','content':('Eres un investigador aeronáutico que cita fuentes reales.' if busqueda
-                                        else 'Eres guionista técnico aeronáutico. Devuelve SOLO el JSON solicitado, sin análisis ni markdown.')},
+            {'role':'system','content':('Investiga el nicho indicado y cita fuentes reales.' if busqueda
+                                        else 'Eres guionista del nicho indicado. Devuelve SOLO el JSON solicitado, sin análisis ni markdown.')},
             {'role':'user','content':prompt}],
         'temperature':0.20 if busqueda else 0.35,
         'max_tokens':2200 if busqueda else AERO_OPENROUTER_MAX_TOKENS,
@@ -516,7 +566,10 @@ def _openrouter_chat(prompt, *, busqueda=False, limitar_razonamiento=True):
     # OpenRouter contabiliza los tokens de razonamiento dentro de max_tokens.
     # 'minimal' reserva una mayor parte al texto visible en modelos compatibles.
     # Un router dinámico puede seleccionar un modelo con razonamiento obligatorio.
-    if not busqueda and limitar_razonamiento:
+    if alternativo:
+        payload['max_tokens']=min(AERO_OPENROUTER_MAX_TOKENS,4500)
+        if alternativo['json']:payload['response_format']={'type':'json_object'}
+    elif not busqueda and limitar_razonamiento:
         payload['reasoning']={'effort':AERO_OPENROUTER_RAZONAMIENTO}
     if busqueda:
         if not AERO_OPENROUTER_WEB_SEARCH:
@@ -535,6 +588,7 @@ def _openrouter_chat(prompt, *, busqueda=False, limitar_razonamiento=True):
         # a consumir todos los tokens de salida. Diagnóstico concreto.
         raise RuntimeError(f'OpenRouter HTTP {r.status_code}: {r.text[:350]}')
     data=r.json()
+    if not busqueda:_OPENROUTER_MODELO_REAL=data.get('model') or payload['model']
     choices=data.get('choices') or []
     if not choices:
         raise RuntimeError('OpenRouter sin respuestas: '+str(data.get('error') or data.get('provider') or '')[:250])
@@ -1321,6 +1375,21 @@ def _consultar_gemini(prompt):
     return _limpiar_json_ia(texto)
 
 
+_GROQ_TPM_REINTENTO_USADO = False
+
+
+def _groq_demora_tpm(respuesta):
+    if respuesta.status_code != 429:return None
+    t = respuesta.text.lower()
+    if any(p in t for p in ('tokens per day','requests per day','(tpd)','(rpd)')):return None
+    if not any(p in t for p in ('tokens per minute','requests per minute','(tpm)','(rpm)','(itpm)','(otpm)')):return None
+    try:
+        demora = float(respuesta.headers.get('retry-after','60'))
+    except (ValueError,TypeError):return None
+    if not math.isfinite(demora) or not 0 <= demora <= 65:return None
+    return max(1.0,demora)+0.5
+
+
 def _consultar_groq(prompt):
     import requests
     key=os.getenv('GROQ_API_KEY','').strip()
@@ -1330,9 +1399,16 @@ def _consultar_groq(prompt):
         {'role':'user','content':prompt}],
         'temperature':0.55,'max_completion_tokens':7000,
         'response_format':{'type':'json_object'}}
-    res=requests.post('https://api.groq.com/openai/v1/chat/completions',
-            headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},
-            json=payload,timeout=(10,AERO_IA_TIMEOUT))
+    global _GROQ_TPM_REINTENTO_USADO
+    url='https://api.groq.com/openai/v1/chat/completions'
+    headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'}
+    res=requests.post(url,headers=headers,json=payload,timeout=(10,AERO_IA_TIMEOUT))
+    demora=_groq_demora_tpm(res)
+    if demora is not None and not _GROQ_TPM_REINTENTO_USADO:
+        _GROQ_TPM_REINTENTO_USADO=True
+        print(f'  Groq: límite por minuto; esperar {demora:.1f}s según Retry-After y reintentar una sola vez.',flush=True)
+        time.sleep(demora)
+        res=requests.post(url,headers=headers,json=payload,timeout=(10,AERO_IA_TIMEOUT))
     if not res.ok:raise RuntimeError(f'Groq HTTP {res.status_code}: '+res.text[:350])
     respuesta=res.json()['choices'][0]['message']['content']
     return _limpiar_json_ia(respuesta)
@@ -1642,7 +1718,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
          'El título debe plantear curiosidad real y una pregunta concreta sobre el nicho seleccionado, basada en las fuentes.',
          'Evita títulos genéricos tipo «Qué es ...», grandilocuencia, falsas primicias, promesas vacías y cifras no documentadas.',
          'Usa EXCLUSIVAMENTE hechos sustentables en las fuentes incluidas; no inventes cifras, fechas, citas o normativa.',
-         'Si las fuentes hablan de algo tangencial, delimita con honestidad el alcance; no extrapoles.',
+         'Mantén todos los bloques dentro del tema y nicho; no inventes una conexión para rescatar un tema tangencial. Si las fuentes no permiten sostener el tema, no fabules.',
          'Incluye entre 3 y 6 hechos_con_evidencia: {fuente_id, afirmacion, cita_id}. Elige cita_id C1, C2, etc. SOLO de citas_verificadas_para_elegir; puedes utilizar cita_textual exacta solo cuando aparezca literalmente en texto_fuente. No reformules las citas.',
          'hechos_con_evidencia es un campo privado de validación: NO enumeres los hechos, no digas «hecho número», «evidencia», «fuente F1», «cita C1», «según la fuente», «pista número» ni introduzcas secciones de hechos durante la locución.',
          'Los ocho bloques deben sonar como un relato fluido e inmersivo, sin encabezados narrados ni listas de hechos. Para ficción, relata la historia como ficción y no como acontecimiento real.',
@@ -1706,7 +1782,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                 print('  Título YouTube investigado:',titulo_ia,flush=True)
                 (carpeta/'GUION_IA.json').write_text(json.dumps({
                     'motor':motor, 'modelo':{'gemini':GEMINI_MODELO,'groq':GROQ_MODELO,
-                              'openrouter':OPENROUTER_MODELO}[motor],
+                              'openrouter':(_OPENROUTER_MODELO_REAL or OPENROUTER_MODELO)}[motor],
                     'fecha_utc':datetime.now(timezone.utc).isoformat(),
                     'fuentes':[{'id':d['id'],'nombre':d['nombre'],'url':d['url']} for d in documentos],
                     'resultado':datos,'verificacion':'Citas textuales localizadas; precisión técnica no certificada automáticamente'
@@ -1720,12 +1796,11 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                 # Si los tokens se consumen razonando, cambiar la estrategia
                 # del siguiente intento; nunca usar razonamiento como guion.
                 if motor=='openrouter' and isinstance(e,OpenRouterSalidaAgotada):
-                    if intento==1:
-                        print('  OpenRouter: salida consumida en razonamiento. Segundo intento con instrucción breve y control de tokens.',flush=True)
+                    if intento==1 and _openrouter_preparar_alternativo():
                         prompt_motor=prompt + '\nResponde inmediatamente con el objeto JSON completo, sin análisis, sin pasos previos ni explicaciones.'
                         continue
                     _AERO_IA_INHABILITADOS[motor]=mensaje[:350]
-                    print('  OpenRouter: salida agotada dos veces, suspendido para evitar más consumo.',flush=True)
+                    print('  OpenRouter: salida agotada y sin alternativa gratuita utilizable; suspendido para evitar más consumo.',flush=True)
                     break
                 # Un cuerpo vacío puede ser transitorio en openrouter/free:
                 # reintentar una sola vez, sin convertir razonamiento en evidencia.
@@ -2829,7 +2904,7 @@ def generar_voces(plan,carpeta):
                 voces_usadas=[]
                 for j,frag in enumerate(fragmentos):
                     idioma,literal=frag[:2]
-                    texto_tts=(normalizar_unidades_narracion(frag[2] if len(frag)>2 else literal) if (_nicho_es_aviacion() or _motor_nicho(NICHO)) else (frag[2] if len(frag)>2 else literal))
+                    texto_tts=(normalizar_unidades_narracion(frag[2] if len(frag)>2 else literal) if _nicho_aeronautico() else (frag[2] if len(frag)>2 else literal))
                     voz_actual=VOZ  # Lorenzo en todos los fragmentos
                     voces_usadas.append(idioma)
                     audio=bytearray();marcas_fragmento=[];error_tts=None
@@ -3747,7 +3822,7 @@ def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,
     print('YouTube AI use:', 'Yes' if ia_requiere_si else 'No', '|', ', '.join(ia_motivos) or 'sin indicios de contenido sintético realista',flush=True)
     cuerpo={'snippet':{'title':titulo,
          'description':descripcion_validada,
-         'categoryId':('28' if (_nicho_es_aviacion() or _motor_nicho(NICHO)) else '27'),'defaultLanguage':'es',
+         'categoryId':('28' if _nicho_aeronautico() else '27'),'defaultLanguage':'es',
          'tags':[NICHO[:35], caso['categoria'][:35], caso.get('_titulo_caso',caso['titulo'])[:35]]},
          'status':{'privacyStatus':YOUTUBE_PRIVACY,'selfDeclaredMadeForKids':False,
                    'containsSyntheticMedia':ia_requiere_si}}
@@ -3996,6 +4071,32 @@ def _nicho_es_aviacion():
     valor=''.join(c for c in unicodedata.normalize('NFKD',NICHO.casefold())
                   if not unicodedata.combining(c)).strip()
     return valor in ('aviacion','aeronautica','aviation')
+
+def _nicho_es_industria_aeronautica():
+    n = _univ_normalizar(NICHO)
+    return n in {
+        'datos de la industria aeronautica', 'industria aeronautica',
+        'datos de la industria de la aviacion', 'industria de la aviacion',
+        'industria de aviacion', 'industria aerea', 'datos de la industria aerea',
+        'aviation industry', 'aerospace aviation industry',
+    }
+
+
+def _nicho_aeronautico():
+    return _nicho_es_aviacion() or _nicho_es_industria_aeronautica() or _motor_nicho(NICHO)
+
+
+def _catalogo_industria_aeronautica(casos, catalogo):
+    """Use the already curated aviation cases, without Wikipedia search noise.
+
+    Original IDs, sources and technical anchors remain unchanged. This also
+    avoids re-publishing an original episode under a newly created niche ID.
+    """
+    prefijos = ('fin_', 'atc_', 'mnt_', 'future_', 'motor_', 'ops_')
+    elegidos = [k for k in catalogo if k.startswith(prefijos) and k in casos]
+    return ({k: dict(casos[k]) for k in elegidos},
+            {k: dict(catalogo[k]) for k in elegidos})
+
 
 def _univ_normalizar(valor):
     import unicodedata
@@ -4306,6 +4407,19 @@ def _univ_activar_catalogo():
     if _nicho_es_aviacion():return
     if not NICHO.strip() or len(NICHO)>85:
         raise ValueError('NICHO debe contener entre 1 y 85 caracteres.')
+    if _nicho_es_industria_aeronautica():
+        nuevos, episodios = _catalogo_industria_aeronautica(CASOS, CATALOGO_AERONAUTICO)
+        if not episodios:
+            raise RuntimeError('El catálogo técnico de industria aeronáutica está vacío.')
+        CASOS = nuevos
+        CATALOGO_AERONAUTICO = episodios
+        categorias = {c['categoria'] for c in nuevos.values()}
+        ENFOQUE_CATEGORIA = {k: v for k, v in ENFOQUE_CATEGORIA.items() if k in categorias}
+        print('NICHO TÉCNICO:', NICHO, '| catálogo aeronáutico curado:', len(episodios), flush=True)
+        if TEMA != 'aleatorio' and TEMA not in episodios:
+            print('AERO_TEMA no pertenece a este perfil; selección aleatoria.', flush=True)
+            TEMA = 'aleatorio'
+        return
     import requests
     nuevos,episodios=_univ_descubrir_catalogo()
     CASOS=nuevos;CATALOGO_AERONAUTICO=episodios
@@ -4519,18 +4633,26 @@ def _motor_foto(nombre,detalle):
     return _motor_evidencia(t)
 
 def _curiosity_tema_pertinente(titulo,resumen):
+    if _nicho_es_industria_aeronautica():
+        # Production uses the curated catalogue; reject generic results here as well.
+        t = _univ_normalizar(titulo)
+        if re.search(r'\b(submarin\w*|naval|automovil\w*|locomotiv\w*|ferrocarril\w*)\b',t):return False
+        return bool(re.search(r'\b(aeronaut\w*|aviacion|aerolinea\w*|aeropuerto\w*|avion\w*|aeronave\w*|turbofan\w*|turborreactor\w*|turbohelice\w*|aeronavegabilidad)\b',t))
     if _motor_nicho(NICHO):
         if re.search(r'\b(automovil\w*|automobile\w*|landaulet|locomotiv\w*|camion\w*)\b',_univ_normalizar(titulo)):return False
         return _motor_evidencia(titulo+' '+resumen)
     anclas=_univ_tokens(NICHO) or set(_univ_normalizar(NICHO).split())
+    # Strip editorial framing, not actual niche terms ("datos de X" etc.).
+    anclas -= {'datos','industria','curiosidades','documentales','informacion'} if len(anclas)>1 else set()
     corpus=set(_univ_normalizar(titulo+' '+resumen).split())
-    # No confundir una palabra de un nicho compuesto con todo el nicho.
-    return bool(anclas and len(anclas & corpus)>=max(1,math.ceil(len(anclas)*0.65)))
+    # All remaining anchors: safer than accepting 65% on compound niches.
+    return bool(anclas and anclas.issubset(corpus))
 
 def _curiosity_formato(caso):
     t=_univ_normalizar(caso.get('_titulo_caso',caso['titulo']))
     if _univ_es_terror():return 'Relato inmersivo, conflicto, tensión y desenlace; identificar ficción o leyenda sin presentarla como hecho real.'
     if _motor_nicho(NICHO):return 'Enigma técnico: funcionamiento del motor, mecanismo causal, comparación o consecuencia verificable, resolución. No convertirlo en historia general de la empresa.'
+    if _nicho_es_industria_aeronautica():return 'Curiosidad documentada sobre la industria aeronáutica: mecanismo, causa, consecuencia operacional o económica, comparación con datos comprobables y respuesta clara. Mantén el enfoque aeronáutico; no inventes conexiones con otras industrias.'
     if any(x in t for x in ('historia','batalla','imperio','revolucion')):return 'Narrativa histórica causal, protagonistas y acontecimientos documentados, consecuencias.'
     return 'Selecciona el formato pertinente: cómo funciona, por qué ocurre, comparación fundamentada o escenario hipotético explícito. Resuelve la pregunta inicial con evidencia.'
 
@@ -4728,10 +4850,37 @@ def _self_test_8():
         assert Path(caso['_mapa_visual'][2]).is_file()
     print('OK: nicho motores, exclusión automóviles, cola límite y protección de reintentos')
 
+def _self_test_81():
+    from unittest.mock import patch
+    from types import SimpleNamespace
+    with patch.dict(globals(),{'NICHO':'Datos de la Industria Aeronáutica'}):
+        c, e = _catalogo_industria_aeronautica(CASOS,CATALOGO_AERONAUTICO)
+        assert len(c)==len(e)==60
+        assert set(e).issubset(CATALOGO_AERONAUTICO)
+        assert all(not x.get('_universal') for x in c.values())
+        for t in ('Ravensburg','Historia de la ciencia y la tecnología en España','К-535 Yuri Dolgoruki'):
+            assert not _curiosity_tema_pertinente(t,'menciona la industria aeronáutica')
+        assert _curiosity_tema_pertinente('Mantenimiento de aeronaves','')
+        assert _nicho_aeronautico()
+        assert normalizar_unidades_narracion('120 NM')=='120 millas náuticas'
+        with patch.dict(globals(),{'_univ_descubrir_catalogo':lambda: (_ for _ in ()).throw(AssertionError('no debe consultar Wikipedia'))}):
+            # Activation mutates globals; patch restores original 100-case catalogue.
+            _univ_activar_catalogo()
+            assert len(CATALOGO_AERONAUTICO)==60 and 'fin_01' in CATALOGO_AERONAUTICO
+    assert len(CATALOGO_AERONAUTICO)==100
+    assert _groq_demora_tpm(SimpleNamespace(status_code=429,text='tokens per minute (TPM)',headers={'retry-after':'3'}))==3.5
+    assert _groq_demora_tpm(SimpleNamespace(status_code=429,text='tokens per day (TPD)',headers={'retry-after':'3'})) is None
+    base=dict(id='fixture/text:free',pricing={'prompt':'0','completion':'0'},architecture={'output_modalities':['text']},context_length=16384,supported_parameters=['response_format'])
+    assert _openrouter_elegir_gratuito([base])=={'id':'fixture/text:free','json':True}
+    assert _openrouter_elegir_gratuito([dict(base,id='fixture/paid',pricing={'prompt':'0.1','completion':'0'}),dict(base,id='fixture/reasoning:free',supported_parameters=['reasoning'])]) is None
+    print('OK: perfil industria de 60 temas, tres casos ajenos rechazados, TPM vs TPD, OpenRouter gratuito alternativo')
+
+
 if __name__=='__main__':
     if '--self-test' in sys.argv:
         prueba_interna()
         _self_test_8()
+        _self_test_81()
         from unittest.mock import patch
         with patch.dict(globals(),{'NICHO':'Astronomía'}):
             ejemplo={'id':'prueba','titulo':'Agujeros negros','_universal':True,'_titulo_caso':'Agujeros negros'}
