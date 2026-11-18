@@ -169,5 +169,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=ANfv814JjqE",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/motores-aeronauticos-43803_20261117_215646_494278/¿Por qué los motores del Concorde fallaron en el accidente del vuelo 4590.mp4"
+  },
+  {
+    "episodio": "fin_03",
+    "caso": "fin_03",
+    "titulo": "¿Por qué el RASK sube cuando la capacidad aumenta un 4%?",
+    "fecha_utc": "2026-11-18T15:12:26.009057+00:00",
+    "youtube_id": "X7nKQFhel7k",
+    "youtube_url": "https://www.youtube.com/watch?v=X7nKQFhel7k",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/fin_03_20261118_150953_281452/¿Por qué el RASK sube cuando la capacidad aumenta un 4%.mp4"
   }
 ]
