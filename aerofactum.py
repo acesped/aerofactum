@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM UNIVERSAL 8.1 · CURIOSITY ENGINE · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM UNIVERSAL 8.3 · CURIOSITY ENGINE · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música cinematográfica original sintetizada con Python.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA. Para relatos de terror se admiten ilustraciones originales procedurales debidamente identificadas.
@@ -35,6 +35,7 @@ IMAGENES_MINIMAS = max(2,min(10,int(os.getenv('AERO_IMAGENES_MINIMAS','4'))))  #
 IMAGENES_MINIMAS_ABSOLUTAS = 1 # mínimo para crear borradores privados; publicación no privada exige IMAGENES_MINIMAS
 MAX_IMAGENES = 10
 AERO_PALABRAS_MIN = max(235, min(900, int(os.getenv("AERO_PALABRAS_MIN", "440"))))
+AERO_PALABRAS_MIN_ACEPTABLE = AERO_PALABRAS_MIN if os.getenv("AERO_PALABRAS_MIN") else max(235, AERO_PALABRAS_MIN-40)
 AERO_PALABRAS_MAX = min(1200, max(AERO_PALABRAS_MIN+80, int(os.getenv("AERO_PALABRAS_MAX", "780"))))
 AERO_COLA_DIR = Path(os.getenv("AERO_COLA_DIR", "state/pendientes_youtube"))
 VERIFICACION_OBLIGATORIA = False # si True, detiene cuando no hay referencias oficiales accesibles
@@ -64,7 +65,10 @@ AERO_INDEXAR_PDF = os.getenv('AERO_INDEXAR_PDF','true').lower() == 'true'
 AERO_CACHE_DOCUMENTAL = os.getenv('AERO_CACHE_DOCUMENTAL','true').lower() == 'true'
 AERO_CACHE_DIR = Path(os.getenv('AERO_CACHE_DIR','state/aero_documentos'))
 AERO_CACHE_DIAS = max(1,int(os.getenv('AERO_CACHE_DIAS','45')))
-AERO_CACHE_VERSION = 3  # 5.3: invalida índices y fragmentos mal clasificados
+AERO_CACHE_VERSION = 5  # relevancia financiera específica y extracción mejorada
+VERSION_SCRIPT = "8.3"
+AERO_GUIONES_DIR = Path(os.getenv("AERO_GUIONES_DIR", "state/aero_guiones"))
+AERO_GUIONES_DIAS = max(1, min(30, int(os.getenv("AERO_GUIONES_DIAS", "14"))))
 AERO_MAX_DOCUMENTOS = max(1,min(8,int(os.getenv('AERO_MAX_DOCUMENTOS','4'))))
 AERO_MIN_FUENTES = max(1,int(os.getenv('AERO_MIN_FUENTES',str(AERO_IA_MIN_FUENTES))))
 AERO_MIN_HECHOS_VERIFICABLES = max(2,int(os.getenv('AERO_MIN_HECHOS_VERIFICABLES',str(AERO_IA_MIN_DATOS))))
@@ -621,6 +625,8 @@ def _descubrir_fuentes_openrouter(caso):
     return [(url,'OpenRouter web search') for url in _enlaces_de_texto_investigado(texto)]
 
 
+_AERO_BUSQUEDA_BLOQUEADA = set()
+
 def _descubrir_fuentes_ia(caso):
     """Fuentes candidatas descubiertas con motores IA y herramientas de búsqueda."""
     modo=AERO_INVESTIGACION_WEB
@@ -637,6 +643,9 @@ def _descubrir_fuentes_ia(caso):
         motores.append('openrouter')
     encontrados=[]; errores=[]
     for motor in motores:
+        if motor in _AERO_BUSQUEDA_BLOQUEADA or motor in _AERO_IA_INHABILITADOS:
+            errores.append(motor+': búsqueda omitida por fallo anterior de proveedor')
+            continue
         if motor=='openrouter' and not AERO_OPENROUTER_WEB_SEARCH:
             errores.append('OpenRouter búsqueda omitida: herramienta web desactivada para evitar cargos')
             continue
@@ -654,6 +663,8 @@ def _descubrir_fuentes_ia(caso):
         except Exception as exc:
             msg=f'{motor}: {type(exc).__name__}: {str(exc)[:210]}'
             errores.append(msg);print('  Búsqueda IA no disponible:',msg,flush=True)
+            if any(x in msg.lower() for x in ('429','503','500','timeout','timed out','quota','rate limit')):
+                _AERO_BUSQUEDA_BLOQUEADA.add(motor)
     unicos=[]; vistos=set()
     for url,nombre in encontrados:
         if url not in vistos and _url_publica_investigacion(url):
@@ -706,7 +717,7 @@ AERO_FUENTES_DOMINIOS_PREFERENTES = (
     'iata.org', 'icao.int', 'faa.gov', 'easa.europa.eu', 'nasa.gov',
     'eurocontrol.int', 'bts.gov', 'transtats.bts.gov', 'ntsb.gov',
     'airlines.org', 'airbus.com', 'boeing.com', 'skybrary.aero', 'ntrs.nasa.gov',
-    'caa.co.uk', 'atsb.gov.au', 'mit.edu'
+    'caa.co.uk', 'atsb.gov.au', 'mit.edu', 'lufthansagroup.com', 'fca.org.uk', 'easyjet.com'
 )
 
 # Fuentes primarias comprobadas para tecnologías aeronáuticas específicas.
@@ -731,6 +742,11 @@ FUENTES_DIRECTAS_TECNOLOGIA = {
 }
 
 FUENTES_DIRECTAS_ECONOMIA = {
+    'fin_03': [
+        ('Lufthansa Group: glosario del informe anual 2025', 'https://report.lufthansagroup.com/2025/annual-report/en/further-information/glossary/'),
+        ('Lufthansa Group: resultados de aerolíneas de pasajeros 2025', 'https://report.lufthansagroup.com/2025/annual-report/en/combined-management-report/business-segments/passenger-airlines-business-segment/'),
+        ('EasyJet: resultados y glosario publicados ante FCA', 'https://data.fca.org.uk/artefacts/NSM/RNS/5509367.html'),
+    ],
     'fin_01': [
         ('IATA: Global Outlook for Air Transport, junio 2026',
          'https://www.iata.org/en/publications/economics/reports/global-outlook-for-air-transport-june-2026/'),
@@ -795,6 +811,8 @@ def _relevancia_documento(texto, caso):
         econ=sum(bool(re.search(p,t)) for p in terminos_economicos)
         ambito=sum(bool(re.search(p,t)) for p in contexto)
         especifico=sum(bool(re.search(p,t)) for p in especiales.get(tema,()))
+        if tema=='fin_03' and especifico and re.search(r'available seat[- ]kilomet|seat[- ]kilomet|revenue per ask|passenger airlines?',t) and re.search(r'\b(?:rask|unit revenues?|revenue per available seat|revenue per ask)\b',t):
+            return 8 + 2*especifico
         if not (ambito and econ and especifico):return 0
         return econ + 2*especifico
     if tema == 'future_03':
@@ -1044,6 +1062,26 @@ _AERO_TERMINOS_POR_TEMA.update({
  'motor_05': ('turboprop','propeller turbine','reduction gearbox'),
 })
 
+# Fuentes primarias FAA y texto normativo estadounidense reproducido por Cornell LII.
+AERO_FUENTES_TEMATICAS_EXTRA.update({
+ 'mnt_03': [('FAA: Airworthiness Directives','https://www.faa.gov/aircraft/air_cert/continued_operation/ad'),
+            ('FAA: AD responsibilities','https://www.faa.gov/aircraft/air_cert/continued_operation/ad/gen_resp')],
+ 'mnt_06': [('FAA AC 20-97B: Aircraft Tire Maintenance','https://www.faa.gov/sites/faa.gov/files/2022-11/AC20-97B.pdf'),
+            ('FAA AC 20-97B: Aircraft Tire Maintenance and Operational Practices','https://www.faa.gov/regulations_policies/advisory_circulars/index.cfm/go/document.information/documentID/22044')],
+ 'mnt_07': [('14 CFR 121.563: Reporting mechanical irregularities (EE.UU., Cornell LII)','https://www.law.cornell.edu/cfr/text/14/121.563'),
+            ('14 CFR 43.9: Maintenance records (EE.UU., Cornell LII)','https://www.law.cornell.edu/cfr/text/14/43.9'),
+            ('14 CFR 91.417: Maintenance records (EE.UU., Cornell LII)','https://www.law.cornell.edu/cfr/text/14/91.417')],
+ 'atc_09': [('14 CFR 121.533: Operational control (EE.UU., Cornell LII)','https://www.law.cornell.edu/cfr/text/14/121.533'),
+            ('14 CFR 121.601: Aircraft dispatcher information (EE.UU., Cornell LII)','https://www.law.cornell.edu/cfr/text/14/121.601')],
+})
+_AERO_TERMINOS_POR_TEMA.update({
+ 'fin_03': ('rask','unit revenue','unit revenues','revenue per available seat','revenue per ask','available seat-kilometres','available seat kilometres'),
+ 'mnt_03': ('airworthiness directive','airworthiness directives','directive de aeronavegabilidad','directiva de aeronavegabilidad'),
+ 'mnt_06': ('aircraft tire','aircraft tires','tire pressure','tire inflation','tyre pressure','tire maintenance','neumaticos'),
+ 'mnt_07': ('maintenance record','maintenance records','maintenance log','mechanical irregularities','technical log','aircraft log','registro tecnico'),
+ 'atc_09': ('aircraft dispatcher','aircraft dispatchers','flight dispatcher','dispatch release','operational control','despachador de vuelo'),
+})
+
 def _aero_anclas_especificas(caso):
     """Construye anclas por episodio; no confunde grupos con evidencia."""
     tema=_tema_id_actual(caso)
@@ -1065,7 +1103,7 @@ def _aero_documento_relevante(texto,caso):
     t=_aero_norm(texto)
     tema=_tema_id_actual(caso)
     if len(t)<180:return 0
-    if tema=='future_03':return _relevancia_documento(texto,caso)
+    if tema=='future_03' or _es_financiero(caso):return _relevancia_documento(texto,caso)
     anclas=_aero_anclas_especificas(caso)
     hits=[x for x in anclas if re.search(r'(?<![a-z])'+re.escape(x)+r'(?![a-z])',t)]
     if not hits:return 0
@@ -1191,7 +1229,7 @@ def _aero_descargar_documento(session,url,caso,nombre):
                     elif 'html' in mime or 'text/plain' in mime or not mime:
                         raw=bytes(chunks).decode(r.encoding or 'utf-8','replace')
                         texto=_limpiar_texto_web(raw,mime)
-                        if _aero_documento_relevante(texto,caso)==0:
+                        if _aero_documento_relevante(texto,caso)==0 or _es_financiero(caso):
                             from bs4 import BeautifulSoup
                             sopa=BeautifulSoup(raw,'html.parser')
                             for tag in sopa(['script','style','nav','footer','header','noscript','svg','form']):tag.decompose()
@@ -1470,7 +1508,7 @@ def _aero_citas_preseleccionadas(documentos,caso):
         for trozo in trozos:
             q=re.sub(r'\s+',' ',trozo).strip()
             if len(q)<65:continue
-            if len(q)>250:
+            if len(q)>420:
                 # No recortar fragmentos en mitad de una frase: omitirlos.
                 continue
             if q.casefold() in vistos:continue
@@ -1482,7 +1520,7 @@ def _aero_citas_preseleccionadas(documentos,caso):
     candidatas.sort(key=lambda x:-x[0])
     resultado=[];por_fuente={}
     for score,sid,q in candidatas:
-        if por_fuente.get(sid,0)>=5:continue
+        if por_fuente.get(sid,0)>=max(5,AERO_IA_MIN_DATOS):continue
         if not score:continue
         resultado.append({'cita_id':'C'+str(len(resultado)+1),'fuente_id':sid,'cita_textual':q})
         por_fuente[sid]=por_fuente.get(sid,0)+1
@@ -1504,6 +1542,9 @@ def _aero_resolver_citas_ia(datos,citas):
     return datos
 
 
+def _limpiar_etiquetas_locucion(texto):
+    return re.sub(r'(?im)(^|(?<=[.!?])\s+)(?:hecho|evidencia|pista)\s*(?:n[uú]mero\s*)?\d+\s*:\s*', r'\1', str(texto)).strip()
+
 def _validar_guion_ia(datos,documentos,caso):
     """Validación estructural, antigenericidad y citas textuales.
 
@@ -1514,7 +1555,7 @@ def _validar_guion_ia(datos,documentos,caso):
     if not isinstance(hechos,list) or len(hechos)<AERO_IA_MIN_DATOS:
         raise ValueError(f'Se requieren {AERO_IA_MIN_DATOS} hechos con evidencia textual.')
     fuentes={d['id']:d for d in documentos}
-    referencias=set()
+    referencias=set(); citas_usadas=set()
     for hecho in hechos:
         if not isinstance(hecho,dict):raise ValueError('Hecho mal estructurado')
         sid=hecho.get('fuente_id');cita=str(hecho.get('cita_textual','')).strip()
@@ -1523,7 +1564,9 @@ def _validar_guion_ia(datos,documentos,caso):
             raise ValueError('Hecho sin fuente válida, cita o afirmación detallada.')
         if _normalizar_evidencia(cita) not in _normalizar_evidencia(fuentes[sid]['texto']):
             raise ValueError(f'Cita del hecho no localizada literalmente en fuente {sid}.')
+        citas_usadas.add(_normalizar_evidencia(cita))
         referencias.add(sid)
+    if len(citas_usadas)<AERO_IA_MIN_DATOS:raise ValueError('Se requieren citas textuales distintas, no repetir una cita para varios hechos.')
     bloques=datos.get('bloques')
     tipos=['gancho','pregunta','contexto','pista','analisis','desarrollo','aplicacion','conclusion']
     if not isinstance(bloques,list) or [b.get('tipo') for b in bloques if isinstance(b,dict)]!=tipos:
@@ -1533,18 +1576,19 @@ def _validar_guion_ia(datos,documentos,caso):
                 'la aviacion es fascinante','el conocimiento detras de cada vuelo',
                 'es muy importante','en resumen, es importante']
     for b in bloques:
-        txt=re.sub(r'\s+',' ',str(b.get('texto',''))).strip()
+        txt=re.sub(r'\s+',' ',_limpiar_etiquetas_locucion(b.get('texto',''))).strip()
+        b['texto']=txt
         palabras=txt.split();total+=len(palabras)
         if len(palabras)<14 or len(palabras)>160:
             raise ValueError('Bloque '+b['tipo']+' demasiado corto/largo ('+str(len(palabras))+' palabras).')
         norm=_normalizar_evidencia(txt)
         # Datos de verificación internos nunca deben escucharse en la narración.
-        if re.search(r'\b(?:hecho|evidencia|pista)\s*(?:n[uú]mero\s*)?\d+\b|\b(?:fuente\s+F\d+|cita\s+C\d+)\b', txt, re.I):
+        if re.search(r'\b(?:hecho|evidencia)\s*(?:n[uú]mero\s*)?\d+\b|\bpista\s+n[uú]mero\s*\d+\s*:', txt, re.I) or re.search(r'\b(?:fuente\s+F\d+|cita\s+C\d+)\b',txt,re.I):
             raise ValueError('El guion está enumerando hechos o citas de verificación en la locución.')
         if any(x in norm for x in prohibidas):raise ValueError('Guion con frase genérica o advertencia eliminada.')
         frases.append(norm)
-    if not AERO_PALABRAS_MIN<=total<=AERO_PALABRAS_MAX:
-        raise ValueError(f'Guion de {total} palabras fuera de objetivo ({AERO_PALABRAS_MIN} a {AERO_PALABRAS_MAX}).')
+    if not AERO_PALABRAS_MIN_ACEPTABLE<=total<=AERO_PALABRAS_MAX:
+        raise ValueError(f'Guion de {total} palabras fuera de objetivo ({AERO_PALABRAS_MIN_ACEPTABLE} a {AERO_PALABRAS_MAX}).')
     from difflib import SequenceMatcher
     for a in range(len(frases)):
         for b in range(a+1,len(frases)):
@@ -1694,8 +1738,10 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
     fuentes_prompt=[]
     for doc in documentos[:AERO_IA_MAX_FUENTES_PROMPT]:
         fuentes_prompt.append({'id':doc['id'],'titulo':doc['nombre'],
-              'url':doc['url'],'texto_fuente':doc['texto'][:AERO_IA_CARACTERES_FUENTE]})
+              'url':doc['url']})
     citas_preseleccionadas=_aero_citas_preseleccionadas(documentos,caso)
+    if len({ _normalizar_evidencia(c['cita_textual']) for c in citas_preseleccionadas }) < AERO_IA_MIN_DATOS:
+        raise EpisodioRecuperable('Documentación insuficiente: no hay suficientes citas literales distintas para redactar sin inventar.')
     historial_textos=[]
     try:
         for item in leer_historial(ruta_historial())[-8:]:
@@ -1706,6 +1752,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
        'tema':caso['titulo'], 'categoria':caso['categoria'],
        'idea_de_partida_no_verificada':caso['contexto'],
        'titulos_previos_para_no_repetir':historial_textos,
+       'minimo_referencias_distintas':AERO_IA_MIN_DATOS,
        'objetivo_titulo':'Título humano atractivo y fiel a los hechos; distinto del nombre técnico de catálogo.',
        'objetivo_retencion':'Gancho en el primer enunciado; tensión o curiosidad creciente, recompensa al final sin engañar.',
        'tipo_narrativo': _curiosity_formato(caso),
@@ -1719,7 +1766,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
          'Evita títulos genéricos tipo «Qué es ...», grandilocuencia, falsas primicias, promesas vacías y cifras no documentadas.',
          'Usa EXCLUSIVAMENTE hechos sustentables en las fuentes incluidas; no inventes cifras, fechas, citas o normativa.',
          'Mantén todos los bloques dentro del tema y nicho; no inventes una conexión para rescatar un tema tangencial. Si las fuentes no permiten sostener el tema, no fabules.',
-         'Incluye entre 3 y 6 hechos_con_evidencia: {fuente_id, afirmacion, cita_id}. Elige cita_id C1, C2, etc. SOLO de citas_verificadas_para_elegir; puedes utilizar cita_textual exacta solo cuando aparezca literalmente en texto_fuente. No reformules las citas.',
+         'Incluye hechos_con_evidencia con al menos tres entradas distintas (o el mínimo indicado): {fuente_id, afirmacion, cita_id}. Elige un cita_id DIFERENTE de citas_verificadas_para_elegir para cada entrada; no copies citas ni inventes IDs. Usa solamente esos pasajes como evidencia. Distingue el alcance estadounidense de las normas 14 CFR.',
          'hechos_con_evidencia es un campo privado de validación: NO enumeres los hechos, no digas «hecho número», «evidencia», «fuente F1», «cita C1», «según la fuente», «pista número» ni introduzcas secciones de hechos durante la locución.',
          'Los ocho bloques deben sonar como un relato fluido e inmersivo, sin encabezados narrados ni listas de hechos. Para ficción, relata la historia como ficción y no como acontecimiento real.',
          'Escribe ocho bloques en orden EXACTO: gancho,pregunta,contexto,pista,analisis,desarrollo,aplicacion,conclusion.',
@@ -1736,13 +1783,15 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
          'Evita escribir "un estudio indica" si no hay informe explícito en las fuentes.',
          'El resultado no debe depender de referencias numéricas que no figuren en el texto recuperado.' ],
        'estructura':{'titulo_youtube':'¿Por qué cambia [concepto central] cuando [condición concreta]?', 'hechos_con_evidencia':[{'fuente_id':'F1','afirmacion':'hecho basado en la cita','cita_id':'C1'}],
-                     'bloques':[{'tipo':'gancho','texto':'Narración...'}]}}
+                     'bloques':[{'tipo':t,'texto':'Narración...','visual_query':'concrete subject'} for t in ('gancho','pregunta','contexto','pista','analisis','desarrollo','aplicacion','conclusion')]}}
     prompt='Escribe JSON válido en español siguiendo esta especificación:\n'+json.dumps(instruccion,ensure_ascii=False)
     motores=_aero_motores_guion()
     errores=[]
     if not motores:
         raise EpisodioRecuperable('No hay proveedores IA de guion disponibles: '+str(_AERO_IA_INHABILITADOS))
     for motor in motores:
+        if motor=='openrouter' and OPENROUTER_MODELO=='openrouter/free' and not _OPENROUTER_ALTERNATIVO_INTENTADO:
+            _openrouter_preparar_alternativo()
         prompt_motor=prompt
         for intento in range(1,3):
             try:
@@ -2677,7 +2726,7 @@ def buscar_fotos(caso,session,carpeta):
             'Wikimedia Commons limitó el acceso HTTP 429. No insistir con más búsquedas; '
             'reprogramar la ejecución o utilizar fotografías ya verificadas con licencias y atribución.\n',
             encoding='utf-8')
-    candidatos.sort(key=lambda item:item[0],reverse=True)
+    candidatos=_ordenar_candidatos_83(caso,candidatos)
     print(f'  Commons: {len(candidatos)} fotografías candidatas tras {len(queries)} consultas planificadas.',flush=True)
     for puntos,archivo,info,url,matches,busqueda in candidatos:
         if len(fotos)>=MAX_IMAGENES:break
@@ -2692,6 +2741,10 @@ def buscar_fotos(caso,session,carpeta):
             im=Image.open(BytesIO(r.content))
             im=ImageOps.exif_transpose(im).convert('RGB')
             if min(im.size)<600:continue
+            huella=_huella_foto_83(im)
+            if any((huella ^ h).bit_count()<=5 for h in hashes):
+                descartes.append({'archivo':archivo,'razon':'Imagen visualmente casi duplicada'})
+                continue
             im.thumbnail((2400,1800),Image.Resampling.LANCZOS)
             destino=carpeta/f'imagen_{len(fotos):02}.jpg'
             im.save(destino,quality=91,optimize=True)
@@ -2707,10 +2760,12 @@ def buscar_fotos(caso,session,carpeta):
                 'puntuacion_relevancia':puntos,
                 'terminos_relacionados':matches,
                 'consulta_origen':busqueda,
+                'objeto_visual': ' '.join(limpiar_html(metadata.get(k,{}).get('value','')) for k in ('ImageDescription','ObjectName'))[:3000],
                 'detalle_visual': ' '.join(limpiar_html(metadata.get(k,{}).get('value','')) for k in ('ImageDescription','ObjectName','Categories'))[:3000],
                 'uso':'Fotografía documental de contexto; puede no retratar exactamente el caso descrito'
             })
             fotos.append(destino)
+            hashes.add(huella)
             print('  Aprobada:',archivo[:65], '| puntuación:',puntos,'|',','.join(matches[:5]))
         except Exception as exc:
             descartes.append({'archivo':archivo,'razon':'No descargable o baja resolución: '+str(exc)[:100]})
@@ -3975,11 +4030,19 @@ def producir_episodio(episodio,historial):
     print('\nAEROFACTUM · EPISODIO',episodio['id'],'\n',caso['titulo'])
     print('Estado de documentación:',caso['estado'])
     sesion=requests.Session()
-    verificar_fuentes(caso,sesion,carpeta)  # disponibilidad general, NO fact-check
-    print('Investigando documentos y noticias accesibles...')
     try:
-        documentos=investigar_episodio(caso,carpeta,sesion)
-        plan=generar_guion_investigado(caso,episodio,documentos,carpeta)
+        previo=_guion_cache_cargar(episodio,caso)
+        if previo:
+            documentos,plan=previo
+            _cola_json(carpeta/'GUION_RECUPERADO.json',{'episodio':episodio['id'],'titulo':caso['titulo'],'plan':plan,'fuentes':documentos})
+            _cola_json(carpeta/'FUENTES_INVESTIGACION.json',{'recuperado':True,'fuentes':documentos})
+            print('  Guion aprobado recuperado: no se consume IA nuevamente.',flush=True)
+        else:
+            verificar_fuentes(caso,sesion,carpeta)
+            print('Investigando documentos y noticias accesibles...')
+            documentos=investigar_episodio(caso,carpeta,sesion)
+            plan=generar_guion_investigado(caso,episodio,documentos,carpeta)
+            _guion_cache_guardar(episodio,caso,documentos,plan,carpeta)
     except Exception as exc:
         # Solo fases anteriores a TTS y publicación admiten cambiar de tema.
         (carpeta/'ERROR_PREPRODUCCION.txt').write_text(
@@ -4006,7 +4069,7 @@ def producir_episodio(episodio,historial):
     # Sin embargo, nunca publicar automáticamente un episodio visible
     # con menos fotografías pertinentes que el objetivo editorial.
     if (PUBLICAR_EN_YOUTUBE and YOUTUBE_PRIVACY in ('public','unlisted')
-            and len(fotos) < IMAGENES_MINIMAS):
+            and len(fotos) < IMAGENES_MINIMAS and not _es_financiero(caso)):
         aviso=(f'PUBLICACIÓN BLOQUEADA: {len(fotos)} recurso(s) visual(es) validado(s) '
                f'pertinente(s), mínimo editorial {IMAGENES_MINIMAS} para '
                f'YOUTUBE_PRIVACY={YOUTUBE_PRIVACY}. '
@@ -4254,12 +4317,17 @@ def _aero_consultas(caso):
             '"'+titulo+'" documentación técnica']
 
 def _consultas_fotos(caso):
-    if not caso.get('_universal'):return _UNIV_CONSULTAS_FOTOS_ORIGINAL(caso)
+    if not caso.get('_universal'):
+        base=_UNIV_CONSULTAS_FOTOS_ORIGINAL(caso)
+        contextual=_consultas_visuales_83(caso)
+        return list(dict.fromkeys(contextual+base))
     titulo=caso.get('_titulo_caso',caso['titulo'])
     return _curiosity_consultas_fotos(caso,titulo)
 
 def evaluar_relevancia_foto(caso,titulo,metadata,busqueda):
     if not caso.get('_universal'):
+        if _es_financiero(caso):
+            return _foto_financiera_83(caso,titulo,metadata)
         return _UNIV_FOTO_RELEVANCIA_ORIGINAL(caso,titulo,metadata,busqueda)
     # Sin exigencia de aeronaves: evaluar el tema concreto a partir de archivo
     # y metadatos. Si no aparece el sujeto, descartar antes de descargar.
@@ -4462,6 +4530,7 @@ def ejecutar():
     rng.shuffle(restantes)
     if _motor_nicho(NICHO):
         restantes.sort(key=lambda x: _motor_evidencia(CATALOGO_AERONAUTICO[x]['titulo']),reverse=True)
+    restantes.sort(key=lambda x: _guion_cache_path(x).is_file(),reverse=True)
     cola.extend(restantes)
     print(f'Catálogo: {len(CATALOGO_AERONAUTICO)} temas en {len(ENFOQUE_CATEGORIA)} áreas.')
     print('Publicados o generados antes:',len(ya),'| objetivo actual:',cantidad)
@@ -4471,9 +4540,9 @@ def ejecutar():
     resultados=[];fallos=[]
     for episodio_id in cola[:max_intentos]:
         if len(resultados)>=cantidad:break
-        if not _aero_motores_guion():
-            print('  Se suspende la selección de temas: no quedan proveedores IA de guion disponibles.',flush=True)
-            break
+        if not _aero_motores_guion() and not _guion_cache_path(episodio_id).is_file():
+            print('  Sin proveedores IA ni guion aprobado recuperable para este tema; se omite.',flush=True)
+            continue
         episodio=dict(CATALOGO_AERONAUTICO[episodio_id])
         print(f'\n=== INTENTO {len(resultados)+len(fallos)+1}/{max_intentos} '
               f'· {episodio_id} · videos completados {len(resultados)}/{cantidad} ===',flush=True)
@@ -4699,10 +4768,11 @@ def _curiosity_asignar_escenas(caso,fotos,creditos,carpeta):
         qtokens=(_curiosity_tokens_visuales(consultas[i])-tema-genericos) if i<len(consultas) else set()
         opciones=[]
         for j,foto in enumerate(fotos):
-            c=creditos[j]; met=_curiosity_tokens_visuales(c.get('titulo','')+' '+c.get('detalle_visual',''))
-            hits=tokens & met; hits_q=qtokens & met
-            if len(hits)>=2 or (hits and hits_q and len(hits|hits_q)>=2) or (len(hits_q)>=2 and bool(qtokens & tokens)):
-                opciones.append((2*len(hits)+len(hits_q),-usos.get(j,0),j,sorted(hits|hits_q)))
+            c=creditos[j]
+            evidencia=c.get('titulo','')+' '+c.get('objeto_visual',c.get('detalle_visual',''))
+            score,hits=_score_escena_83(caso,i,evidencia)
+            if score>0:
+                opciones.append((score-2*usos.get(j,0),-usos.get(j,0),j,hits))
         if opciones:
             _,_,j,hits=max(opciones); usos[j]=usos.get(j,0)+1; path=fotos[j]
             registros.append({'escena':i+1,'archivo':Path(path).name,'criterio':'coincidencia textual en metadatos, no comprobación visual directa','coincidencias':hits})
@@ -4710,7 +4780,7 @@ def _curiosity_asignar_escenas(caso,fotos,creditos,carpeta):
             # Text card is deliberately not a documentary photograph.
             path=Path(carpeta)/f'tarjeta_contextual_{i:02}.jpg'
             im=Image.new('RGB',(1600,900),'#101b2d');d=ImageDraw.Draw(im)
-            frase=re.split(r'(?<=[.!?])\s+',txt.strip())[0][:170]
+            frase=_frase_visual_83(txt)
             d.rectangle((100,155,115,720),fill='#43c7dc')
             escribir_en_caja(d,frase,(155,205,1480,725),cargar_fuente(56),'#ffffff',max_lineas=5,centrar_vertical=True)
             im.save(path,quality=92)
@@ -4720,8 +4790,16 @@ def _curiosity_asignar_escenas(caso,fotos,creditos,carpeta):
     (Path(carpeta)/'PLAN_VISUAL_ESCENAS.json').write_text(json.dumps(registros,ensure_ascii=False,indent=2),encoding='utf-8')
     n_fotos=sum('coincidencias' in r for r in registros)
     print('  Plan visual: ',n_fotos,'escenas con foto contextual de',len(registros),flush=True)
-    if plan and PUBLICAR_EN_YOUTUBE and YOUTUBE_PRIVACY!='private' and n_fotos < math.ceil(len(plan)*0.5):
-        raise EpisodioRecuperable('Menos de la mitad de las escenas tiene apoyo fotográfico pertinente; no publicar automáticamente. Revisar PLAN_VISUAL_ESCENAS.json.')
+    if plan and PUBLICAR_EN_YOUTUBE and YOUTUBE_PRIVACY!='private':
+        if _es_financiero(caso):
+            # Reportajes de economía: los conceptos abstractos se pueden explicar
+            # mediante tarjetas originales; se exigen fotos CIVILES contextuales.
+            fotos_usadas={r['archivo'] for r in registros if 'coincidencias' in r}
+            total_recursos=len({r['archivo'] for r in registros})
+            if len(fotos_usadas)<2 or total_recursos<IMAGENES_MINIMAS:
+                raise EpisodioRecuperable('Finanzas: se requieren al menos dos fotos civiles distintas asignadas a escenas y el mínimo editorial de recursos distintos. Revisar PLAN_VISUAL_ESCENAS.json.')
+        elif n_fotos < math.ceil(len(plan)*0.5):
+            raise EpisodioRecuperable('Menos de la mitad de las escenas tiene apoyo fotográfico pertinente; no publicar automáticamente. Revisar PLAN_VISUAL_ESCENAS.json.')
 
 class PublicacionAplazada(RuntimeError):pass
 
@@ -4876,11 +4954,201 @@ def _self_test_81():
     print('OK: perfil industria de 60 temas, tres casos ajenos rechazados, TPM vs TPD, OpenRouter gratuito alternativo')
 
 
+
+# ========== 8.3: coherencia visual + cache de guiones aprobados ==========
+# El cache guarda textos, no credenciales ni tokens. Un guion recuperado pasa
+# nuevamente las reglas de estructura, longitud, citas y pertinencia documental.
+def _guion_cache_path(episodio_id):
+    clave=hashlib.sha256((_univ_slug(NICHO)+'|'+str(episodio_id)).encode()).hexdigest()
+    return AERO_GUIONES_DIR/(clave+'.json')
+
+def _guion_cache_guardar(episodio,caso,documentos,plan,carpeta):
+    try:
+        registro=json.loads((Path(carpeta)/'GUION_IA.json').read_text(encoding='utf-8'))
+        _cola_json(_guion_cache_path(episodio['id']),{
+            'version':VERSION_SCRIPT,'timestamp':time.time(),'nicho':NICHO,
+            'episodio':episodio['id'],'tema':caso.get('_titulo_caso'),
+            'titulo':caso['titulo'],'documentos':documentos,'datos':registro['resultado'],
+            'plan':plan,'consultas':caso.get('_consultas_escenas',[]),'modo_viral':MODO_VIRAL,
+            'pregunta_final':PREGUNTA_FINAL_ESPECIFICA})
+    except (OSError,ValueError,KeyError,TypeError) as exc:
+        print('  Aviso: guion aprobado no persistido:',str(exc)[:150],flush=True)
+
+def _guion_cache_cargar(episodio,caso):
+    try:
+        p=_guion_cache_path(episodio['id'])
+        guarda=json.loads(p.read_text(encoding='utf-8'))
+        if (guarda['version']!=VERSION_SCRIPT or guarda['nicho']!=NICHO or
+            guarda['episodio']!=episodio['id'] or guarda['tema']!=caso.get('_titulo_caso') or
+            guarda['modo_viral']!=MODO_VIRAL or guarda['pregunta_final']!=PREGUNTA_FINAL_ESPECIFICA or
+            not 0<=time.time()-guarda['timestamp']<=AERO_GUIONES_DIAS*86400):return None
+        docs=guarda['documentos']
+        if len(docs)<AERO_MIN_FUENTES or len({d['url'] for d in docs})<AERO_MIN_FUENTES:return None
+        if any(not _url_publica_investigacion(d['url']) or _aero_documento_relevante(d['texto'],caso)<=0 for d in docs):return None
+        plan=_validar_guion_ia(guarda['datos'],docs,caso)
+        titulo=guarda['titulo']
+        if not isinstance(titulo,str) or not 32<=len(titulo)<=95:return None
+        # Reconstruir la llamada editorial; no confiar ciegamente en plan guardado.
+        if MODO_VIRAL and PREGUNTA_FINAL_ESPECIFICA:
+            for k in range(len(plan)-1,-1,-1):
+                if plan[k][0]=='conclusion':
+                    cierre=plan[k][1]; pregunta=_viral_pregunta_contextual(caso)
+                    if '?' not in cierre and len((cierre+' '+pregunta).split())<=105:
+                        plan[k]=('conclusion',cierre.rstrip(' .')+'. '+pregunta)
+                    break
+        plan.append(('cta','Si te gustó este contenido, dale Like y Suscríbete! Muchas gracias por tu visita y nos vemos en un próximo video!'))
+        if [list(x) for x in plan]!=guarda['plan']:return None
+        caso['titulo']=episodio['titulo']=titulo
+        caso['_consultas_escenas']=[str(b.get('visual_query',''))[:100] for b in guarda['datos']['bloques']]
+        return docs,plan
+    except (OSError,ValueError,KeyError,TypeError,AttributeError):return None
+
+# Bilingüe, orientado a objetos visibles y no a coincidencias de palabras vacías.
+_VIS_83_EQ={
+ 'repostaje':'refueling','reabastecimiento':'refueling','abastecimiento':'refueling','refuel':'refueling','refuelling':'refueling','refueled':'refueling','refueling':'refueling','defueling':'defueling',
+ 'queroseno':'fuel','kerosene':'fuel','carburante':'fuel','combustibles':'fuel','combustible':'fuel','jetfuel':'fuel','camion':'truck','camiones':'truck','trucks':'truck','cisterna':'truck','tanker':'truck',
+ 'aerolinea':'airline','aerolineas':'airline','airlines':'airline','airliners':'airliner','avion':'aircraft','aviones':'aircraft','aeronave':'aircraft','aeronaves':'aircraft','airplanes':'aircraft','airplane':'aircraft',
+ 'aeropuerto':'airport','aeropuertos':'airport','airports':'airport','pasajero':'passenger','pasajeros':'passenger','passengers':'passenger','asiento':'seat','asientos':'seat','seats':'seat','cabina':'cabin','cabins':'cabin',
+ 'embarque':'boarding','embarcando':'boarding','terminales':'terminal','puerta':'gate','puertas':'gate','gates':'gate','equipajes':'baggage','equipaje':'baggage','maletas':'baggage','carga':'cargo','cargamento':'cargo',
+ 'flota':'fleet','vuelos':'flight','vuelo':'flight','flights':'flight','rutas':'route','ruta':'route','routes':'route','billetes':'ticket','billete':'ticket','boletos':'ticket','boleto':'ticket','tickets':'ticket',
+ 'mantenimiento':'maintenance','neumatico':'tire','neumaticos':'tire','tires':'tire','tyres':'tire','tyre':'tire','ruedas':'wheel','rueda':'wheel','wheels':'wheel','ingeniero':'engineer','ingenieros':'engineer','hangares':'hangar',
+ 'gasolina':'fuel','tanques':'tank','tanque':'tank','tanks':'tank','deposito':'tank','depositos':'tank','manguera':'hose','mangueras':'hose','hoses':'hose',
+ 'costos':'cost','costes':'cost','gastos':'cost','costs':'cost','expenses':'cost','ingresos':'revenue','revenues':'revenue','precios':'price','precio':'price','prices':'price','consumo':'consumption','consumir':'consumption',
+ 'kilometros':'kilometre','kilometers':'kilometre','kilometres':'kilometre','margenes':'margin','margen':'margin','rentabilidad':'profit','beneficios':'profit','beneficio':'profit',
+ 'avion comercial':'airliner','hidrogeno':'hydrogen','baterias':'battery','baterias':'battery','batteries':'battery','bateria':'battery','ala':'wing','alas':'wing','wings':'wing'}
+_VIS_83_GENERIC=set('aircraft aviation airplane flight airport airline airliner system systems general funcionamiento tecnologia industry industria contexto figure public domain united states photograph aviation aircraft air aircrafts photo picture'.split())
+_VIS_83_STRONG=set('fuel refueling truck passenger seat cabin boarding terminal gate baggage cargo fleet ticket route tank hose engine compressor turbine turbofan rotor blade nozzle combustion piston propeller cylinder exhaust tire wheel hangar hydraulic hydrogen battery wing altimeter radar runway taxiway runway landing'.split())
+_VIS_83_MILITAR=re.compile(r'\b(?:military|militar|usaf|usn|usmc|raf|royal air force|air force|airman|airmen|navy|army|marine corps|armed forces|defense gov|department of defense|dod|air base|airbase|fighter|combat|squadron|bomber|warplane|kc 135|kc 46|c 130|c 17|c 23b|f 16|f 35|f 18)\b',re.I)
+_VIS_83_CIVIL=re.compile(r'\b(?:civil aviation|commerci(?:al|al aviation|al aircraft)|airline|airlines|airliner|airliners|airbus|boeing|embraer|lufthansa|easyjet|ryanair|delta air lines|united airlines|american airlines|air france|klm|latam|jetblue|southwest|passenger aircraft|passenger plane|passenger cabin|passenger terminal|a320|a321|a330|a350|a380|b737|b747|b777|b787|737|747|777|787|airport terminal|commercial airport)\b',re.I)
+def _tokens_83(txt):
+    base=_curiosity_tokens_visuales(txt)
+    return {_VIS_83_EQ.get(w,w) for w in base}
+
+def _metadatos_objeto_83(titulo,meta):
+    return str(titulo)+' '+' '.join(limpiar_html(meta.get(k,{}).get('value','')) for k in ('ImageDescription','ObjectName'))
+
+def _score_escena_83(caso,i,evidencia):
+    plan=[x for x in caso.get('_plan_visual',[]) if x[0]!='cta']
+    if i>=len(plan):return 0,[]
+    txt=plan[i][1]
+    narr=_tokens_83(txt)-_VIS_83_GENERIC
+    met=_tokens_83(evidencia)-_VIS_83_GENERIC
+    q=caso.get('_consultas_escenas',[])
+    consulta=_tokens_83(q[i])-_VIS_83_GENERIC if i<len(q) else set()
+    # Una búsqueda sugerida por IA no prueba el contenido de una foto.
+    # Sólo aporta peso si coincide también con lo narrado y los metadatos.
+    hits=narr&met; corroborados=hits&consulta; fuertes=hits&_VIS_83_STRONG
+    if _es_financiero(caso):
+        n=_univ_normalizar(evidencia)
+        if _VIS_83_MILITAR.search(n) or not _VIS_83_CIVIL.search(n):return 0,[]
+        if not fuertes:return 0,[]
+        return 5*len(fuertes)+2*len(corroborados)+len(hits),sorted(hits)
+    # Un componente técnico explícito es suficiente con contexto del caso;
+    # para conceptos no catalogados todavía se requieren dos coincidencias.
+    if len(hits)>=2 or (fuertes and corroborados):
+        return 3*len(hits)+2*len(corroborados)+2*len(fuertes),sorted(hits)
+    return 0,[]
+
+def _foto_financiera_83(caso,titulo,meta):
+    evidencia=_metadatos_objeto_83(titulo,meta)
+    n=_univ_normalizar(evidencia)
+    if _VIS_83_MILITAR.search(n) or not _VIS_83_CIVIL.search(n):return 0,[]
+    plan=[x for x in caso.get('_plan_visual',[]) if x[0]!='cta']
+    if not plan:
+        return (0,[])  # no selección sin el guion real
+    scores=[_score_escena_83(caso,i,evidencia) for i in range(len(plan))]
+    maximo=max(scores,key=lambda x:x[0])
+    return (maximo[0]+8,maximo[1]) if maximo[0] else (0,[])
+
+def _consultas_visuales_83(caso):
+    plan=[x for x in caso.get('_plan_visual',[]) if x[0]!='cta']
+    sugeridas=caso.get('_consultas_escenas',[]); salida=[]
+    # Buscar sujetos concretos, sin prefijar el título español a cada consulta.
+    for i,(_,txt) in enumerate(plan):
+        n=_tokens_83(txt); q=str(sugeridas[i]).strip()[:100] if i<len(sugeridas) else ''
+        if q and (n&_tokens_83(q))-_VIS_83_GENERIC:
+            salida.append(q+(' commercial airline' if _es_financiero(caso) else ' aviation'))
+        if _es_financiero(caso):
+            for palabra,consulta in [('fuel','commercial airliner jet fuel refueling'),('refueling','airport airline refueling truck'),('seat','commercial airplane passenger cabin seats'),('passenger','commercial airport passenger boarding'),('cargo','airline cargo loading aircraft'),('fleet','commercial airline aircraft airport apron'),('baggage','commercial airport baggage loading'),('tank','commercial aircraft fuel tank')]:
+                if palabra in n:salida.append(consulta)
+    if _es_financiero(caso):
+        if _tema_id_actual(caso)=='fin_05':salida+=['commercial aircraft refueling airport','airliner refueling fuel truck','Lufthansa aircraft refueling','commercial jet aircraft fuel truck']
+        else:salida+=['commercial passenger aircraft cabin seats','commercial airline passenger boarding','airline aircraft airport gate']
+    return list(dict.fromkeys(salida))
+
+def _ordenar_candidatos_83(caso,candidatos):
+    # Cobertura codiciosa: priorizar una foto que cubra una escena aún no cubierta.
+    plan=[x for x in caso.get('_plan_visual',[]) if x[0]!='cta']
+    if not plan:return sorted(candidatos,key=lambda x:x[0],reverse=True)
+    bolsa=[]; cubiertas=set();resultado=[]
+    for item in candidatos:
+        puntos,titulo,info,*_=item
+        evidencia=_metadatos_objeto_83(titulo,info.get('extmetadata') or {})
+        scores={i:_score_escena_83(caso,i,evidencia)[0] for i in range(len(plan))}
+        bolsa.append((item,{i:v for i,v in scores.items() if v>0}))
+    while bolsa:
+        j=max(range(len(bolsa)),key=lambda k:(len(set(bolsa[k][1])-cubiertas),max(bolsa[k][1].values(),default=0),bolsa[k][0][0]))
+        item,scores=bolsa.pop(j);cubiertas.update(scores);resultado.append(item)
+    return resultado
+
+def _huella_foto_83(im):
+    from PIL import Image
+    pix=list(im.convert('L').resize((9,8),Image.Resampling.LANCZOS).getdata())
+    return sum((pix[y*9+x]>pix[y*9+x+1]) << (y*8+x) for y in range(8) for x in range(8))
+
+def _frase_visual_83(txt):
+    frases=[f.strip() for f in re.split(r'(?<=[.!?])\s+',txt.strip()) if f.strip()]
+    candidatas=[f for f in frases if 25<=len(f)<=190]
+    if candidatas:return max(candidatas,key=lambda f:(bool(re.search(r'\b\d',f)),len(_tokens_83(f)&(_VIS_83_STRONG|{'cost','revenue','margin','price','profit','consumption'})),len(f)))
+    # Truncamiento explícito para no presentar una cita como una frase completa.
+    f=frases[0] if frases else txt
+    return f if len(f)<=190 else f[:185].rsplit(' ',1)[0]+'…'
+
+def _self_test_83():
+    from tempfile import TemporaryDirectory
+    from unittest.mock import patch
+    from PIL import Image
+    caso=dict(CASOS['fin_05']);caso['_episodio']={'caso_id':'fin_05'}
+    caso['_plan_visual']=[('gancho','El combustible de un avión comercial se carga por medio de un camión de repostaje.'),('desarrollo','Los pasajeros ocupan asientos disponibles en la cabina.'),('conclusion','El margen depende de los ingresos y los costos.')]
+    caso['_consultas_escenas']=['airliner fuel refueling truck','aircraft passenger cabin seats','airline operating costs']
+    for foto in ['File:US Navy aviation fuel aircraft.jpg','File:USAF aircraft refueling truck at Pleiku Air Base.jpg','File:914th Airman defuels aircraft refueling truck.jpg']:
+        assert evaluar_relevancia_foto(caso,foto,{},'airline refueling')==(0,[]),foto
+    assert evaluar_relevancia_foto(caso,'File:Lufthansa airliner fuel refueling truck.jpg',{},'airline fuel')[0]>0
+    assert evaluar_relevancia_foto(caso,'File:Lufthansa commercial passenger cabin seats.jpg',{},'airline passenger')[0]>0
+    assert evaluar_relevancia_foto(caso,'File:Commercial airline pilot portrait.jpg',{},'airline fuel')==(0,[])
+    assert _score_escena_83(caso,2,'Lufthansa airliner fuel truck')==(0,[])
+    with TemporaryDirectory() as td,patch.dict(globals(),{'PUBLICAR_EN_YOUTUBE':False,'AERO_GUIONES_DIR':Path(td)/'guiones'}):
+        root=Path(td); fotos=[root/'fuel.jpg',root/'seat.jpg']
+        for f in fotos:Image.new('RGB',(800,600),'#102030').save(f)
+        creditos=[{'titulo':'Lufthansa airliner fuel refueling truck','objeto_visual':''},{'titulo':'Lufthansa commercial passenger cabin seats','objeto_visual':''}]
+        _curiosity_asignar_escenas(caso,fotos,creditos,root)
+        assert Path(caso['_mapa_visual'][0])==fotos[0]
+        assert Path(caso['_mapa_visual'][1])==fotos[1]
+        assert Path(caso['_mapa_visual'][2]).name.startswith('tarjeta_contextual_')
+        assert _guion_cache_cargar({'id':'x'},caso) is None
+        # Cache round-trip of stored, already validated structure; production
+        # validation is tested by the inherited self-tests.
+        ep={'id':'fin_05','titulo':'¿Por qué cuesta tanto el combustible de una aerolínea?'}
+        c=dict(caso,_titulo_caso='Por qué el combustible pesa en las cuentas',titulo=ep['titulo'])
+        doc={'id':'F1','nombre':'Fuente simulada','url':'https://example.com/report','texto':'Airline fuel costs and jet fuel expenses affect airline operating costs. '*6}
+        base=[('conclusion','La relación entre costos e ingresos explica el margen.')]
+        with patch.dict(globals(),{'_validar_guion_ia':lambda *a:list(base),'MODO_VIRAL':False}):
+            plan=base+[('cta','Si te gustó este contenido, dale Like y Suscríbete! Muchas gracias por tu visita y nos vemos en un próximo video!')]
+            (root/'GUION_IA.json').write_text(json.dumps({'resultado':{'bloques':[]}}))
+            _guion_cache_guardar(ep,c,[doc],plan,root)
+            assert _guion_cache_cargar(dict(ep),dict(c))[1]==plan
+    rask=dict(CASOS['fin_03']);rask['_episodio']={'caso_id':'fin_03'}
+    assert _aero_documento_relevante('Key performance indicator for air transport. Unit revenue (RASK) denotes the revenue divided by available seat-kilometres. '*3,rask)>0
+    assert _aero_documento_relevante('Generic flight airport pilots aviation aircraft engines. '*6,rask)==0
+    print('OK: finanzas civiles, asignación contextual, RASK y recuperación de guiones aprobados')
+
 if __name__=='__main__':
+    print(f'AEROFACTUM UNIVERSAL {VERSION_SCRIPT} | Nicho: {NICHO}',flush=True)
     if '--self-test' in sys.argv:
         prueba_interna()
         _self_test_8()
         _self_test_81()
+        _self_test_83()
         from unittest.mock import patch
         with patch.dict(globals(),{'NICHO':'Astronomía'}):
             ejemplo={'id':'prueba','titulo':'Agujeros negros','_universal':True,'_titulo_caso':'Agujeros negros'}
