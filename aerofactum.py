@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM UNIVERSAL VIRAL 7.2 · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM UNIVERSAL 8.0 · CURIOSITY ENGINE · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música cinematográfica original sintetizada con Python.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA. Para relatos de terror se admiten ilustraciones originales procedurales debidamente identificadas.
@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from datetime import datetime, timezone
 
 # ==================== CONFIGURACIÓN EDITABLE ====================
-NICHO = "Datos Industria Aeronáutica"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
+NICHO = "Datos de la Industria Aeronáutica"  # CAMBIAR SOLO ESTA LÍNEA: p. ej. "Astronomía", "Historia", "Océanos"
 TEMA = os.getenv('AERO_TEMA', 'aleatorio')       # caso específico o 'aleatorio'; por defecto no repite episodios
 VOZ = 'es-CL-LorenzoNeural'  # voz fija para TODOS los segmentos de narración
 VELOCIDAD = os.getenv('AERO_VELOCIDAD_VOZ', '-5%').strip()  # Lorenzo más pausado; configurable en GitHub Variables
@@ -34,6 +34,9 @@ ANCHO, ALTO = 1920, 1080        # render nativo Full HD para exportación 1080p 
 IMAGENES_MINIMAS = max(2,min(10,int(os.getenv('AERO_IMAGENES_MINIMAS','4'))))  # mínimo editorial, configurable
 IMAGENES_MINIMAS_ABSOLUTAS = 1 # mínimo para crear borradores privados; publicación no privada exige IMAGENES_MINIMAS
 MAX_IMAGENES = 10
+AERO_PALABRAS_MIN = max(235, min(900, int(os.getenv("AERO_PALABRAS_MIN", "440"))))
+AERO_PALABRAS_MAX = min(1200, max(AERO_PALABRAS_MIN+80, int(os.getenv("AERO_PALABRAS_MAX", "780"))))
+AERO_COLA_DIR = Path(os.getenv("AERO_COLA_DIR", "state/pendientes_youtube"))
 VERIFICACION_OBLIGATORIA = False # si True, detiene cuando no hay referencias oficiales accesibles
 OUTPUT_BASE = Path(os.getenv('AERO_OUTPUT_DIR', '/content/AEROFACTUM' if Path('/content').exists() else 'output/AEROFACTUM'))
 # Guion investigado: Gemini -> Groq -> OpenRouter. Nunca usar plantillas si fallan.
@@ -1323,7 +1326,7 @@ def _consultar_groq(prompt):
     key=os.getenv('GROQ_API_KEY','').strip()
     if not key:raise RuntimeError('GROQ_API_KEY no configurada')
     payload={'model':GROQ_MODELO,'messages':[
-        {'role':'system','content':'Eres un redactor técnico aeronáutico. Responde solo JSON válido.'},
+        {'role':'system','content':'Eres un redactor especializado en el nicho indicado. Responde solo JSON válido.'},
         {'role':'user','content':prompt}],
         'temperature':0.55,'max_completion_tokens':7000,
         'response_format':{'type':'json_object'}}
@@ -1456,7 +1459,7 @@ def _validar_guion_ia(datos,documentos,caso):
     for b in bloques:
         txt=re.sub(r'\s+',' ',str(b.get('texto',''))).strip()
         palabras=txt.split();total+=len(palabras)
-        if len(palabras)<14 or len(palabras)>105:
+        if len(palabras)<14 or len(palabras)>160:
             raise ValueError('Bloque '+b['tipo']+' demasiado corto/largo ('+str(len(palabras))+' palabras).')
         norm=_normalizar_evidencia(txt)
         # Datos de verificación internos nunca deben escucharse en la narración.
@@ -1464,8 +1467,8 @@ def _validar_guion_ia(datos,documentos,caso):
             raise ValueError('El guion está enumerando hechos o citas de verificación en la locución.')
         if any(x in norm for x in prohibidas):raise ValueError('Guion con frase genérica o advertencia eliminada.')
         frases.append(norm)
-    if not 235<=total<=490:
-        raise ValueError(f'Guion de {total} palabras fuera de objetivo (235 a 490).')
+    if not AERO_PALABRAS_MIN<=total<=AERO_PALABRAS_MAX:
+        raise ValueError(f'Guion de {total} palabras fuera de objetivo ({AERO_PALABRAS_MIN} a {AERO_PALABRAS_MAX}).')
     from difflib import SequenceMatcher
     for a in range(len(frases)):
         for b in range(a+1,len(frases)):
@@ -1531,12 +1534,12 @@ def _viral_evaluacion(caso,plan,fotos=None):
     if len(gancho.split())<14:advertencias.append('Gancho inicial demasiado corto')
     if re.search(r'^(hola|bienvenid[oa]s?|en este video|hoy vamos a|suscr[ií]bete)',gancho,re.I):
         advertencias.append('Gancho comienza con una introducción genérica')
-    if not 235<=total<=490:advertencias.append('Extensión fuera del rango editorial')
+    if not AERO_PALABRAS_MIN<=total<=AERO_PALABRAS_MAX:advertencias.append('Extensión fuera del rango editorial')
     if fotos is not None and len(fotos)<AERO_VISUALES_OBJETIVO:
         advertencias.append('Variedad visual inferior al objetivo editorial')
     longitud_titulo=len(str(caso.get('titulo','')))
     if not 32<=longitud_titulo<=95:advertencias.append('Longitud del título fuera del objetivo')
-    return {'version':'7.0','nicho':NICHO,'tema':caso.get('_titulo_caso',caso.get('titulo')),
+    return {'version':'8.0','nicho':NICHO,'tema':caso.get('_titulo_caso',caso.get('titulo')),
             'titulo':caso.get('titulo'),'escenas':len(escenas),'palabras':total,
             'palabras_gancho':len(gancho.split()),'visuales':len(fotos) if fotos is not None else None,
             'advertencias':advertencias,'aprobado':not advertencias,
@@ -1629,8 +1632,9 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
        'titulos_previos_para_no_repetir':historial_textos,
        'objetivo_titulo':'Título humano atractivo y fiel a los hechos; distinto del nombre técnico de catálogo.',
        'objetivo_retencion':'Gancho en el primer enunciado; tensión o curiosidad creciente, recompensa al final sin engañar.',
-       'tipo_narrativo': 'Suspenso literario sin presentar ficción como evidencia histórica' if _univ_es_terror() else 'Divulgación narrativa con revelaciones verificadas',
-       'plan_visual':'Cada bloque debe describir un elemento concreto que pueda ilustrarse con recursos legales y pertinentes.',
+       'tipo_narrativo': _curiosity_formato(caso),
+       'enfoque': 'Una pregunta central concreta y una recompensa clara. Distingue hipótesis, ficción y hechos. No imites canales ni inventes sucesos.',
+       'plan_visual':'Cada bloque debe describir un elemento concreto que pueda ilustrarse con recursos legales y pertinentes. Incluye en cada bloque un campo visual_query con 2 a 5 palabras concretas en inglés, fieles al texto, sin nombres inventados.',
        'fuentes_documentales':fuentes_prompt,
        'citas_verificadas_para_elegir':citas_preseleccionadas,
        'normas':[ 'Devuelve un objeto JSON, sin markdown ni texto externo.',
@@ -1643,7 +1647,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
          'hechos_con_evidencia es un campo privado de validación: NO enumeres los hechos, no digas «hecho número», «evidencia», «fuente F1», «cita C1», «según la fuente», «pista número» ni introduzcas secciones de hechos durante la locución.',
          'Los ocho bloques deben sonar como un relato fluido e inmersivo, sin encabezados narrados ni listas de hechos. Para ficción, relata la historia como ficción y no como acontecimiento real.',
          'Escribe ocho bloques en orden EXACTO: gancho,pregunta,contexto,pista,analisis,desarrollo,aplicacion,conclusion.',
-         'Cada bloque: {tipo,texto}; intenta 35 a 55 palabras, máximo 105. Total de ocho bloques entre 235 y 490 palabras.',
+         f'Cada bloque: {{tipo,texto}}; máximo 160 palabras. Total entre {AERO_PALABRAS_MIN} y {AERO_PALABRAS_MAX} palabras; distribuye el espacio según la complejidad.',
          'Debes aportar al menos tres aprendizajes específicos y un ejemplo explicado sin inventar incidentes.',
          'La primera escena abre DIRECTAMENTE con el hecho o la situación concreta más intrigante, sin saludo ni presentación del canal.',
          'En los ocho bloques mantén progresión: gancho, pregunta central, contexto mínimo, pista, complicación, desarrollo narrativo, aplicación/revelación, cierre satisfactorio.',
@@ -1671,6 +1675,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                         'openrouter':_consultar_openrouter}[motor])(prompt_motor)
                 datos=_aero_resolver_citas_ia(datos,citas_preseleccionadas)
                 plan=_validar_guion_ia(datos,documentos,caso)
+                caso['_consultas_escenas']=[str(b.get('visual_query',''))[:100] for b in datos['bloques']]
                 try:
                     titulo_ia=_validar_titulo_youtube(datos,caso)
                 except ValueError as titulo_error:
@@ -2542,7 +2547,7 @@ def buscar_fotos(caso,session,carpeta):
     rate_limitado = False
     for i_busqueda, busqueda in enumerate(queries):
         # Parar una vez exista un banco suficiente de candidatos para descargar.
-        if i_busqueda >= 6 and len(candidatos) >= max(18, IMAGENES_MINIMAS*4):
+        if not caso.get('_consultas_escenas') and i_busqueda >= 6 and len(candidatos) >= max(18, IMAGENES_MINIMAS*4):
             print('  Commons: suficientes candidatos; se evita consultar búsquedas adicionales.',flush=True)
             break
         if i_busqueda:
@@ -2627,6 +2632,7 @@ def buscar_fotos(caso,session,carpeta):
                 'puntuacion_relevancia':puntos,
                 'terminos_relacionados':matches,
                 'consulta_origen':busqueda,
+                'detalle_visual': ' '.join(limpiar_html(metadata.get(k,{}).get('value','')) for k in ('ImageDescription','ObjectName','Categories'))[:3000],
                 'uso':'Fotografía documental de contexto; puede no retratar exactamente el caso descrito'
             })
             fotos.append(destino)
@@ -2823,7 +2829,7 @@ def generar_voces(plan,carpeta):
                 voces_usadas=[]
                 for j,frag in enumerate(fragmentos):
                     idioma,literal=frag[:2]
-                    texto_tts=(normalizar_unidades_narracion(frag[2] if len(frag)>2 else literal) if _nicho_es_aviacion() else (frag[2] if len(frag)>2 else literal))
+                    texto_tts=(normalizar_unidades_narracion(frag[2] if len(frag)>2 else literal) if (_nicho_es_aviacion() or _motor_nicho(NICHO)) else (frag[2] if len(frag)>2 else literal))
                     voz_actual=VOZ  # Lorenzo en todos los fragmentos
                     voces_usadas.append(idioma)
                     audio=bytearray();marcas_fragmento=[];error_tts=None
@@ -3379,33 +3385,10 @@ def crear_cta_base(carpeta):
 
 
 def _foto_por_escena(caso, indice, fotos):
-    """Elige recurso con coincidencias reales entre narración y metadatos.
-
-    Para ficción de terror la correspondencia es uno a uno. Para fotografía
-    documental jamás se presenta una imagen no relacionada como hecho real.
-    """
     if not fotos:raise RuntimeError('Montaje sin recursos visuales')
-    plan=[p for p in caso.get('_plan_visual',[]) if p[0]!='cta']
-    if caso.get('_universal') and _univ_es_terror() and plan:
-        return fotos[min(indice,len(fotos)-1)]
-    if not plan or indice>=len(plan):return fotos[indice%len(fotos)]
-    texto=plan[indice][1]
-    relevantes=_univ_tokens(texto) if caso.get('_universal') else set(_normalizar_texto_foto(texto).split())
-    referencias=caso.get('_creditos_visuales',[])
-    mejores=[]
-    for j,recurso in enumerate(fotos):
-        meta=referencias[j] if j<len(referencias) else {}
-        texto_meta=' '.join([str(meta.get('titulo','')),str(meta.get('consulta_origen','')),
-             ' '.join(map(str,meta.get('terminos_relacionados',[])))])
-        tokens=_univ_tokens(texto_meta) if caso.get('_universal') else set(_normalizar_texto_foto(texto_meta).split())
-        puntos=len(relevantes & tokens)
-        mejores.append((puntos,j))
-    maxima=max(p for p,_ in mejores)
-    if maxima:
-        candidatos=[j for p,j in mejores if p==maxima]
-        return fotos[candidatos[indice%len(candidatos)]]
-    # Sin coincidencia literal no afirmar pertinencia visual. Se registra
-    # en la auditoría y se conserva un recurso validado a nivel de tema.
+    mapa=caso.get('_mapa_visual',[])
+    if indice<len(mapa):return Path(mapa[indice])
+    if caso.get('_universal') and _univ_es_terror():return fotos[min(indice,len(fotos)-1)]
     return fotos[0]
 
 
@@ -3742,7 +3725,7 @@ def _aero_declaracion_ia_youtube(caso, creditos):
     return requiere_declaracion, list(dict.fromkeys(motivos))
 
 
-def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,historial):
+def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,historial,canal_esperado=None):
     from googleapiclient.http import MediaFileUpload
     if YOUTUBE_PRIVACY not in ('private','unlisted','public'):
         raise ValueError('YOUTUBE_PRIVACY debe ser private, unlisted o public.')
@@ -3751,7 +3734,8 @@ def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,
     # Verificar créditos y longitud antes de iniciar la subida.
     descripcion_validada=descripcion_youtube(caso,fuentes,creditos)
     servicio=youtube_servicio()
-    validar_canal_youtube(servicio)
+    canal=validar_canal_youtube(servicio)
+    if canal_esperado and canal!=canal_esperado:raise RuntimeError('Canal de la cola distinto del canal OAuth; no publicar.')
     titulo=caso['titulo'][:100]
     ia_requiere_si, ia_motivos = _aero_declaracion_ia_youtube(caso,creditos)
     (Path(carpeta)/'DECLARACION_IA_YOUTUBE.json').write_text(json.dumps({
@@ -3763,7 +3747,7 @@ def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,
     print('YouTube AI use:', 'Yes' if ia_requiere_si else 'No', '|', ', '.join(ia_motivos) or 'sin indicios de contenido sintético realista',flush=True)
     cuerpo={'snippet':{'title':titulo,
          'description':descripcion_validada,
-         'categoryId':('28' if _nicho_es_aviacion() else '27'),'defaultLanguage':'es',
+         'categoryId':('28' if (_nicho_es_aviacion() or _motor_nicho(NICHO)) else '27'),'defaultLanguage':'es',
          'tags':[NICHO[:35], caso['categoria'][:35], caso.get('_titulo_caso',caso['titulo'])[:35]]},
          'status':{'privacyStatus':YOUTUBE_PRIVACY,'selfDeclaredMadeForKids':False,
                    'containsSyntheticMedia':ia_requiere_si}}
@@ -3958,6 +3942,7 @@ def producir_episodio(episodio,historial):
         print(aviso,flush=True)
         raise EpisodioRecuperable(aviso)
     caso['_creditos_visuales']=creditos
+    _curiosity_asignar_escenas(caso,fotos,creditos,carpeta)
     if MODO_VIRAL:
         auditoria=_viral_guardar_paquete(caso,plan,carpeta,fotos)
         print('  Evaluación editorial:', 'sin alertas' if auditoria['aprobado'] else '; '.join(auditoria['advertencias']),flush=True)
@@ -3992,7 +3977,7 @@ def producir_episodio(episodio,historial):
         _viral_short_local(video,caso,carpeta)
     guardar_drive(carpeta)
     if PUBLICAR_EN_YOUTUBE:
-        publicar_youtube(video,thumb,srt,caso,episodio,fuentes,creditos,carpeta,historial)
+        _cola_publicar(video,thumb,srt,caso,episodio,fuentes,creditos,carpeta,historial)
     else:
         anotar_historial(historial,dict(episodio=episodio['id'],caso=episodio['caso_id'],
             titulo=episodio['titulo'],fecha_utc=datetime.now(timezone.utc).isoformat(),salida=str(video)))
@@ -4037,6 +4022,8 @@ def _univ_es_terror():
     return 'terror' in n and any(w in n for w in ('historias','relatos','cuentos','leyendas'))
 
 def _univ_consultas_temas():
+    if _motor_nicho(NICHO):
+        return ['motor aeronáutico','turbofán motor','turborreactor motor','turbohélice avión', 'motor radial avión','motor de pistón aeronáutico','motor aeronáutico compresor','motor aeronáutico turbina','motor aeronáutico propulsión']
     if _univ_es_terror():
         return ['cuento de fantasmas','relato de terror','leyenda urbana',
                 'leyenda de fantasmas','literatura de terror','casa encantada']
@@ -4097,7 +4084,7 @@ def _univ_descubrir_catalogo(session=None):
             corpus=_univ_normalizar(titulo+' '+resumen)
             if _univ_es_terror():
                 if not _univ_tema_terror_pertinente(titulo,resumen):continue
-            elif relacionados and not any(t in corpus for t in relacionados):
+            elif not _curiosity_tema_pertinente(titulo,resumen):
                 continue
             from urllib.parse import quote as _quote
             url='https://es.wikipedia.org/wiki/'+_quote(titulo.replace(' ','_'),safe='()_,-')
@@ -4151,6 +4138,7 @@ def _aero_documento_relevante(texto,caso):
     if not caso.get('_universal'):return _UNIV_RELEVANCIA_ORIGINAL(texto,caso)
     t=_univ_normalizar(texto)
     if len(t)<180:return 0
+    if _motor_nicho(NICHO) and not _motor_evidencia(t):return 0
     anclas=_aero_anclas_especificas(caso)
     if not anclas:return 0
     aciertos=sum(bool(re.search(r'(?<![a-z0-9])'+re.escape(w)+r'(?![a-z0-9])',t)) for w in anclas)
@@ -4167,9 +4155,7 @@ def _aero_consultas(caso):
 def _consultas_fotos(caso):
     if not caso.get('_universal'):return _UNIV_CONSULTAS_FOTOS_ORIGINAL(caso)
     titulo=caso.get('_titulo_caso',caso['titulo'])
-    return list(dict.fromkeys([titulo+' photograph',titulo+' photography',
-         titulo+' foto',titulo+' fotografía',titulo+' image',
-         titulo+' '+NICHO, NICHO+' '+titulo+' photo',titulo]))
+    return _curiosity_consultas_fotos(caso,titulo)
 
 def evaluar_relevancia_foto(caso,titulo,metadata,busqueda):
     if not caso.get('_universal'):
@@ -4183,10 +4169,20 @@ def evaluar_relevancia_foto(caso,titulo,metadata,busqueda):
     if not anclas:return (0,[])
     hits_nombre={w for w in anclas if re.search(r'\b'+re.escape(w)+r'\b',nombre)}
     hits_meta={w for w in anclas if re.search(r'\b'+re.escape(w)+r'\b',detalle)}
-    if not hits_nombre:return (0,[])
+    if _motor_nicho(NICHO):
+        anclas=_curiosity_tokens_visuales(caso.get('_titulo_caso',caso['titulo']))
+        hits_nombre=anclas & _curiosity_tokens_visuales(nombre)
+        hits_meta=anclas & _curiosity_tokens_visuales(detalle)
+        centrales=anclas-{'engine','aircraft','aviation','motor','motores','aeronautico','aeronauticos','aeronave','avion'}
+        if centrales and not (centrales & (hits_nombre | hits_meta)):return (0,[])
+        objeto=' '.join(limpiar_html(metadata.get(k,{}).get('value','')) for k in ('ImageDescription','ObjectName'))
+        if not _motor_foto(nombre,objeto):return (0,[])
+        # Topic must appear in filename or actual object description, not category only.
+        if not hits_nombre and not (anclas & _curiosity_tokens_visuales(objeto)):return (0,[])
+    elif not hits_nombre:return (0,[])
     hits=hits_nombre|hits_meta
     puntos=8*len(hits_nombre)+2*len(hits_meta)
-    return (puntos,sorted(hits)) if puntos>=8 else (0,[])
+    return (max(8,puntos),sorted(hits)) if hits else (0,[])
 
 def _univ_recuperar_wikipedia(caso,session):
     """Extrae texto visible de la API oficial Wikimedia sin inventar fuentes.
@@ -4337,15 +4333,22 @@ def ejecutar():
             raise RuntimeError('Publicación pública requiere ALLOW_UNREVIEWED_PUBLICATION=true.')
         validar_canal_youtube(youtube_servicio())
     ya={r.get('episodio') for r in leer_historial(historial)}
+    if PUBLICAR_EN_YOUTUBE and not AERO_IA_DRY_RUN and not CREAR_VISTA_PREVIA:
+        pendientes=_cola_reanudar(historial,cantidad)
+        if pendientes is not None:return pendientes
+    ya |= _cola_ids()
     candidatos=[x for x in CATALOGO_AERONAUTICO if x not in ya]
     if TEMA!='aleatorio':
         if TEMA not in CATALOGO_AERONAUTICO:raise ValueError('Tema desconocido: '+TEMA)
-        candidatos=[TEMA]
+        candidatos=[TEMA] if TEMA not in ya else []
         if AERO_PERMITIR_CAMBIO_TEMA_EXPLICITO and AERO_CAMBIAR_TEMA_SI_FALLA:
             candidatos += [x for x in CATALOGO_AERONAUTICO if x not in ya and x!=TEMA]
     rng=random.SystemRandom();cola=candidatos[:1] if TEMA!='aleatorio' else []
     restantes=[x for x in candidatos if x not in cola]
-    rng.shuffle(restantes);cola.extend(restantes)
+    rng.shuffle(restantes)
+    if _motor_nicho(NICHO):
+        restantes.sort(key=lambda x: _motor_evidencia(CATALOGO_AERONAUTICO[x]['titulo']),reverse=True)
+    cola.extend(restantes)
     print(f'Catálogo: {len(CATALOGO_AERONAUTICO)} temas en {len(ENFOQUE_CATEGORIA)} áreas.')
     print('Publicados o generados antes:',len(ya),'| objetivo actual:',cantidad)
     if not cola:raise RuntimeError('No hay episodios nuevos disponibles.')
@@ -4363,6 +4366,10 @@ def ejecutar():
         try:
             resultado=producir_episodio(episodio,historial)
             resultados.append(resultado)
+        except PublicacionAplazada as exc:
+            print(str(exc),flush=True)
+            _cola_json(OUTPUT_BASE/'ULTIMO_INFORME_EJECUCION.json', {'estado':'publicacion_aplazada','detalle':str(exc),'videos_completados':len(resultados),'videos_solicitados':cantidad})
+            return resultados
         except EpisodioRecuperable as exc:
             fallos.append({'tema':episodio_id,'error':str(exc)[:900],
                            'fecha_utc':datetime.now(timezone.utc).isoformat()})
@@ -4491,15 +4498,247 @@ def prueba_interna():
     assert VOZ=='es-CL-LorenzoNeural'
     print('OK: 100 temas, Lorenzo, NM, fuentes, citas literales, fotos, títulos y auditoría viral')
 
+# ==================== 8.0: CURIOSITY ENGINE Y COLA SEGURA ====================
+def _motor_nicho(nicho):
+    n=_univ_normalizar(nicho)
+    return bool(re.search(r'\b(motor\w*|engine\w*|propulsion)\b',n) and re.search(r'aeronaut|aviacion|aircraft|aviation',n))
+
+def _motor_evidencia(texto):
+    t=_univ_normalizar(texto)
+    if re.search(r'\b(turbofan\w*|turborreactor\w*|turbojet\w*|turboprop\w*|turbohelice\w*|aeroengine\w*)\b',t):return True
+    motores=list(re.finditer(r'\b(motor\w*|engine\w*|propulsion|turbina\w*|turbine\w*|compresor\w*|compressor\w*|piston\w*)\b',t))
+    aereo=list(re.finditer(r'\b(aeronaut\w*|aviacion|avion\w*|aeronave\w*|aircraft|airplane\w*|aviation|aero)\b',t))
+    return any(abs(m.start()-a.start())<=120 for m in motores for a in aereo)
+
+
+def _motor_foto(nombre,detalle):
+    t=_univ_normalizar(nombre+' '+detalle)
+    # Penalizar el objeto de la foto, no solo el nombre de la empresa.
+    if re.search(r'\b(landaulet|viktoria|automovil\w*|automobile\w*|car|cars|truck|camion\w*|locomotiv\w*|railway|tram|tranvia|electric car)\b',_univ_normalizar(nombre)):return False
+    if re.search(r'\b(automobile|automovil|truck|locomotive|railway)\b',t) and not _motor_evidencia(nombre):return False
+    return _motor_evidencia(t)
+
+def _curiosity_tema_pertinente(titulo,resumen):
+    if _motor_nicho(NICHO):
+        if re.search(r'\b(automovil\w*|automobile\w*|landaulet|locomotiv\w*|camion\w*)\b',_univ_normalizar(titulo)):return False
+        return _motor_evidencia(titulo+' '+resumen)
+    anclas=_univ_tokens(NICHO) or set(_univ_normalizar(NICHO).split())
+    corpus=set(_univ_normalizar(titulo+' '+resumen).split())
+    # No confundir una palabra de un nicho compuesto con todo el nicho.
+    return bool(anclas and len(anclas & corpus)>=max(1,math.ceil(len(anclas)*0.65)))
+
+def _curiosity_formato(caso):
+    t=_univ_normalizar(caso.get('_titulo_caso',caso['titulo']))
+    if _univ_es_terror():return 'Relato inmersivo, conflicto, tensión y desenlace; identificar ficción o leyenda sin presentarla como hecho real.'
+    if _motor_nicho(NICHO):return 'Enigma técnico: funcionamiento del motor, mecanismo causal, comparación o consecuencia verificable, resolución. No convertirlo en historia general de la empresa.'
+    if any(x in t for x in ('historia','batalla','imperio','revolucion')):return 'Narrativa histórica causal, protagonistas y acontecimientos documentados, consecuencias.'
+    return 'Selecciona el formato pertinente: cómo funciona, por qué ocurre, comparación fundamentada o escenario hipotético explícito. Resuelve la pregunta inicial con evidencia.'
+
+def _curiosity_consultas_fotos(caso,titulo):
+    contexto=' aircraft engine' if _motor_nicho(NICHO) else ' '+NICHO
+    consultas=[titulo+contexto, titulo+contexto+' photograph']
+    for q in caso.get('_consultas_escenas',[]):
+        if q.strip():consultas.append(titulo+' '+q+(' aircraft engine' if _motor_nicho(NICHO) else ''))
+    consultas += [titulo+' motor aeronáutico',titulo+' aircraft engine museum'] if _motor_nicho(NICHO) else [titulo+' fotografía',titulo+' photograph',titulo+' '+NICHO]
+    return list(dict.fromkeys(consultas))
+
+def _curiosity_tokens_visuales(txt):
+    tokens=_univ_tokens(txt)
+    equivalencias={
+      'motor':'engine','motores':'engine','engines':'engine','aeronaves':'aircraft','aeronave':'aircraft','avion':'aircraft','aviones':'aircraft','aeronautico':'aviation','aeronauticos':'aviation','aeronautica':'aviation','aviacion':'aviation',
+      'compresor':'compressor','compresores':'compressor','compressors':'compressor',
+      'turbina':'turbine','turbinas':'turbine','turbines':'turbine',
+      'combustion':'combustion','combustible':'fuel','combustibles':'fuel',
+      'helice':'propeller','helices':'propeller','propellers':'propeller',
+      'pistones':'piston','pistons':'piston','cilindro':'cylinder','cilindros':'cylinder','cylinders':'cylinder',
+      'radiales':'radial','turbofan':'turbofan','turbohelice':'turboprop','turborreactor':'turbojet',
+      'rotor':'rotor','rotores':'rotor','aspas':'blade','alabes':'blade','blades':'blade',
+      'reactor':'jet','inyector':'injector','inyectores':'injector','injectors':'injector',
+      'escape':'exhaust','gases':'gas','tobera':'nozzle','toberas':'nozzle','nozzles':'nozzle',
+      'camara':'chamber','camaras':'chamber','chambers':'chamber','corte':'cutaway',
+      'navegacion':'navigation','cohete':'rocket','cohetes':'rocket','planeta':'planet','planetas':'planet',
+      'estrellas':'star','galaxia':'galaxy','galaxias':'galaxy','bosque':'forest','oceano':'ocean'}
+    ruido=set('photograph photography photo fotografias fotografia imagen image images pictures archivo file commons wikimedia museo museum historico historical antiguo antigua old modelo model muestra shown view lado side vista parte section detail detalles equipo equipment general tecnico technical'.split())
+    return {equivalencias.get(t,t) for t in tokens if t not in ruido}
+
+def _curiosity_asignar_escenas(caso,fotos,creditos,carpeta):
+    """A photo without scene-level match is replaced by an explicit text card.
+    No search query counts as evidence that an image contains a subject."""
+    if caso.get('_universal') and _univ_es_terror():return
+    from PIL import Image,ImageDraw
+    plan=[p for p in caso.get('_plan_visual',[]) if p[0]!='cta']
+    registros=[];mapa=[];usos={}
+    # Never use the company name alone to prove relevance to a scene.
+    tema=_curiosity_tokens_visuales(caso.get('_titulo_caso',caso['titulo']))
+    genericos=set('motor motores engine engines aeronave aeronaves aircraft avion aviones aviation aviacion aeronauticos aeronautico funcionamiento sistema tecnologia'.split())
+    for i,(tipo,txt) in enumerate(plan):
+        tokens=_curiosity_tokens_visuales(txt)-tema-genericos
+        consultas=caso.get('_consultas_escenas',[])
+        qtokens=(_curiosity_tokens_visuales(consultas[i])-tema-genericos) if i<len(consultas) else set()
+        opciones=[]
+        for j,foto in enumerate(fotos):
+            c=creditos[j]; met=_curiosity_tokens_visuales(c.get('titulo','')+' '+c.get('detalle_visual',''))
+            hits=tokens & met; hits_q=qtokens & met
+            if len(hits)>=2 or (hits and hits_q and len(hits|hits_q)>=2) or (len(hits_q)>=2 and bool(qtokens & tokens)):
+                opciones.append((2*len(hits)+len(hits_q),-usos.get(j,0),j,sorted(hits|hits_q)))
+        if opciones:
+            _,_,j,hits=max(opciones); usos[j]=usos.get(j,0)+1; path=fotos[j]
+            registros.append({'escena':i+1,'archivo':Path(path).name,'criterio':'coincidencia textual en metadatos, no comprobación visual directa','coincidencias':hits})
+        else:
+            # Text card is deliberately not a documentary photograph.
+            path=Path(carpeta)/f'tarjeta_contextual_{i:02}.jpg'
+            im=Image.new('RGB',(1600,900),'#101b2d');d=ImageDraw.Draw(im)
+            frase=re.split(r'(?<=[.!?])\s+',txt.strip())[0][:170]
+            d.rectangle((100,155,115,720),fill='#43c7dc')
+            escribir_en_caja(d,frase,(155,205,1480,725),cargar_fuente(56),'#ffffff',max_lineas=5,centrar_vertical=True)
+            im.save(path,quality=92)
+            registros.append({'escena':i+1,'archivo':path.name,'criterio':'tarjeta textual del relato; sin fotografía atingente','texto':frase})
+        mapa.append(str(path))
+    caso['_mapa_visual']=mapa
+    (Path(carpeta)/'PLAN_VISUAL_ESCENAS.json').write_text(json.dumps(registros,ensure_ascii=False,indent=2),encoding='utf-8')
+    n_fotos=sum('coincidencias' in r for r in registros)
+    print('  Plan visual: ',n_fotos,'escenas con foto contextual de',len(registros),flush=True)
+    if plan and PUBLICAR_EN_YOUTUBE and YOUTUBE_PRIVACY!='private' and n_fotos < math.ceil(len(plan)*0.5):
+        raise EpisodioRecuperable('Menos de la mitad de las escenas tiene apoyo fotográfico pertinente; no publicar automáticamente. Revisar PLAN_VISUAL_ESCENAS.json.')
+
+class PublicacionAplazada(RuntimeError):pass
+
+def _cola_json(path,datos):
+    path=Path(path); path.parent.mkdir(parents=True,exist_ok=True)
+    tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(datos,ensure_ascii=False,indent=2),encoding='utf-8');tmp.replace(path)
+
+def _cola_manifiestos():
+    for p in sorted(AERO_COLA_DIR.glob('*/pendiente.json')):
+        yield p,json.loads(p.read_text(encoding='utf-8'))
+
+def _cola_ids():
+    return {d['episodio']['id'] for _,d in _cola_manifiestos() if d.get('estado') in ('listo','limite','intento_incierto','publicado')}
+
+def _cola_intento(p,d,historial):
+    # Check history FIRST: an upload with a returned ID must never be repeated.
+    existente=next((r for r in leer_historial(historial) if r.get('episodio')==d['episodio']['id'] and r.get('youtube_id')),None)
+    if existente:
+        d.update(estado='publicado',youtube_id=existente['youtube_id'],youtube_estado=existente.get('youtube_estado','video_subido'))
+        _cola_json(p,d)
+        print('Video ya registrado; no se vuelve a subir:',existente['youtube_id'],flush=True)
+        return existente['youtube_id']
+    if d.get('estado') not in ('listo','limite'):
+        raise PublicacionAplazada('Carga anterior incierta: revisar YouTube Studio antes de reintentar '+str(p))
+    if time.time()<d.get('reintentar_desde',0):raise PublicacionAplazada('Límite YouTube: publicación pendiente conservada hasta '+datetime.fromtimestamp(d['reintentar_desde'],timezone.utc).isoformat())
+    if d['privacidad']!=YOUTUBE_PRIVACY:raise PublicacionAplazada('Privacidad de la cola distinta de la configuración actual; revisar antes de publicar.')
+    for k in ('video','miniatura','srt'):
+        if not (p.parent/d[k]).is_file():raise RuntimeError('Archivo pendiente faltante: '+d[k])
+    d['estado']='intento_incierto';_cola_json(p,d)
+    try:
+        vid=publicar_youtube(p.parent/d['video'],p.parent/d['miniatura'],p.parent/d['srt'],d['caso'],d['episodio'],d['fuentes'],d['creditos'],p.parent,historial,canal_esperado=d.get('canal_id'))
+    except Exception as exc:
+        if 'uploadLimitExceeded' in str(exc) and not any(r.get('episodio')==d['episodio']['id'] and r.get('youtube_id') for r in leer_historial(historial)):
+            d.update(estado='limite',reintentar_desde=time.time()+86400,error='uploadLimitExceeded');_cola_json(p,d)
+            raise PublicacionAplazada('YouTube alcanzó el límite de subida. Video conservado: '+str(p.parent/d['video'])) from exc
+        # Other errors may be after upload; history or manual reconciliation required.
+        d['error']=str(exc)[:500];_cola_json(p,d);raise
+    d.update(estado='publicado',youtube_id=vid);_cola_json(p,d)
+    # Keep manifest; remove duplicate media only when original still exists locally.
+    original=Path(d.get('carpeta_original',''))
+    if original.is_dir() and original.resolve()!=p.parent.resolve() and all((original/d[k]).is_file() for k in ('video','miniatura','srt')):
+        for archivo in ('PUBLICACION_YOUTUBE.json','DECLARACION_IA_YOUTUBE.json','MINIATURA_YOUTUBE.json'):
+            if (p.parent/archivo).is_file():shutil.copy2(p.parent/archivo,original/archivo)
+        datos=leer_historial(historial)
+        for r in datos:
+            if r.get('episodio')==d['episodio']['id']:r['salida']=str(original/d['video'])
+        _cola_json(historial,datos)
+        for k in ('video','miniatura','srt'):(p.parent/d[k]).unlink(missing_ok=True)
+    return vid
+
+def _cola_publicar(video,thumb,srt,caso,episodio,fuentes,creditos,carpeta,historial):
+    p=AERO_COLA_DIR/episodio['id']/ 'pendiente.json'
+    if p.exists():raise PublicacionAplazada('Ya existe una cola para este episodio: '+str(p))
+    canal_id=validar_canal_youtube(youtube_servicio())
+    p.parent.mkdir(parents=True,exist_ok=True)
+    for archivo in (video,thumb,srt):shutil.copy2(archivo,p.parent/Path(archivo).name)
+    d={'estado':'listo','nicho':NICHO,'canal_id':canal_id,'carpeta_original':str(carpeta),'privacidad':YOUTUBE_PRIVACY,'video':Path(video).name,'miniatura':Path(thumb).name,'srt':Path(srt).name,'caso':{k:v for k,v in caso.items() if not k.startswith('_') or k in ('_titulo_caso','_universal')},'episodio':episodio,'fuentes':fuentes,'creditos':creditos,'creado_utc':datetime.now(timezone.utc).isoformat()}
+    _cola_json(p,d);return _cola_intento(p,d,historial)
+
+def _cola_reanudar(historial,cantidad):
+    # Block on pending of current channel/niche; never mix niches automatically.
+    activos=[(p,d) for p,d in _cola_manifiestos() if d.get('estado')!='publicado']
+    if not activos:return None
+    if YOUTUBE_PRIVACY!='private' and not PERMITIR_PUBLICACION_SIN_REVISION:
+        raise RuntimeError('Publicación de pendientes requiere ALLOW_UNREVIEWED_PUBLICATION=true.')
+    if any(d.get('nicho')!=NICHO for _,d in activos):
+        print('Hay publicaciones pendientes de otro nicho; restaurar ese nicho o revisar la cola antes de producir.',flush=True);return []
+    resultados=[]
+    for p,d in activos[:cantidad]:
+        try:resultados.append(_cola_intento(p,d,historial))
+        except PublicacionAplazada as exc:
+            print(str(exc),flush=True)
+            _cola_json(OUTPUT_BASE/'ULTIMO_INFORME_EJECUCION.json',{'estado':'publicacion_aplazada','detalle':str(exc),'videos_completados':len(resultados),'videos_solicitados':cantidad})
+            break
+    if len(resultados)==min(len(activos),cantidad):
+        _cola_json(OUTPUT_BASE/'ULTIMO_INFORME_EJECUCION.json',{'estado':'cola_procesada','videos_completados':len(resultados),'videos_solicitados':cantidad,'videos_youtube':resultados})
+    return resultados
+
+def _self_test_8():
+    from unittest.mock import patch
+    from tempfile import TemporaryDirectory
+    assert _motor_nicho('Motores Aeronáuticos')
+    assert not _motor_foto('Siemens-Schuckert Typ B Landaulet.jpg','Siemens Schuckert')
+    assert _motor_foto('Siemens aircraft engine.jpg','aircraft piston engine')
+    assert _motor_evidencia('motor de avión de pistón')
+    with patch.dict(globals(),{'NICHO':'Motores Aeronáuticos'}):
+        caso={'titulo':'Siemens-Schuckert','_universal':True}
+        assert evaluar_relevancia_foto(caso,'File:Siemens-Schuckert Typ B Landaulet.jpg',{},'aircraft engine')==(0,[])
+        assert evaluar_relevancia_foto(caso,'File:Siemens-Schuckert aircraft radial engine.jpg',{},'aircraft engine')[0]>0
+        caso={'titulo':'Motor radial','_universal':True}
+        assert evaluar_relevancia_foto(caso,'File:Aircraft radial piston engine.jpg',{},'motor radial')[0]>0
+    with TemporaryDirectory() as td:
+        root=Path(td); h=root/'historial.json'; p=root/'pendiente.json'
+        for name in ('v.mp4','t.jpg','s.srt'):(root/name).write_bytes(b'test')
+        d={'estado':'listo','episodio':{'id':'test'},'privacidad':YOUTUBE_PRIVACY,'video':'v.mp4','miniatura':'t.jpg','srt':'s.srt','caso':{},'fuentes':[],'creditos':[]}
+        def limite(*args,**kwargs):raise RuntimeError('uploadLimitExceeded')
+        with patch.dict(globals(),{'publicar_youtube':limite}):
+            try:_cola_intento(p,d,h)
+            except PublicacionAplazada:pass
+            else:raise AssertionError('Límite no detectado')
+            assert d['estado']=='limite' and (root/'v.mp4').exists()
+            try:_cola_intento(p,d,h)
+            except PublicacionAplazada:pass
+            else:raise AssertionError('Reintento prematuro')
+        d['estado']='intento_incierto';d['reintentar_desde']=0
+        try:_cola_intento(p,d,h)
+        except PublicacionAplazada:pass
+        else:raise AssertionError('Reintento ambiguo')
+        d['estado']='limite'
+        def exito(*args,**kwargs):
+            _cola_json(h,[{'episodio':'test','youtube_id':'ID_SIMULADO','youtube_estado':'completo'}]);return 'ID_SIMULADO'
+        with patch.dict(globals(),{'publicar_youtube':exito}):
+            assert _cola_intento(p,d,h)=='ID_SIMULADO' and d['estado']=='publicado'
+        with patch.dict(globals(),{'publicar_youtube':lambda *a,**k: (_ for _ in ()).throw(AssertionError('Duplicado'))}):
+            assert _cola_intento(p,d,h)=='ID_SIMULADO'
+    from PIL import Image
+    with TemporaryDirectory() as td, patch.dict(globals(),{'NICHO':'Motores Aeronáuticos','PUBLICAR_EN_YOUTUBE':False}):
+        root=Path(td); fotos=[root/'compresor.jpg',root/'turbina.jpg']
+        for f in fotos:Image.new('RGB',(800,600),'#183857').save(f)
+        creditos=[{'titulo':'Aircraft axial compressor rotor','detalle_visual':'compressor blade rotor'},{'titulo':'Aircraft gas turbine exhaust nozzle','detalle_visual':'turbine exhaust nozzle'}]
+        caso={'titulo':'Motor aeronáutico','_universal':True,'_plan_visual':[('gancho','El compresor contiene un rotor y álabes.'),('contexto','La turbina dirige los gases hacia la tobera.'),('desarrollo','Consideremos este fenómeno con atención.')]}
+        _curiosity_asignar_escenas(caso,fotos,creditos,root)
+        assert _foto_por_escena(caso,0,fotos)==fotos[0]
+        assert _foto_por_escena(caso,1,fotos)==fotos[1]
+        assert Path(caso['_mapa_visual'][2]).name.startswith('tarjeta_contextual_')
+        assert Path(caso['_mapa_visual'][2]).is_file()
+    print('OK: nicho motores, exclusión automóviles, cola límite y protección de reintentos')
+
 if __name__=='__main__':
     if '--self-test' in sys.argv:
         prueba_interna()
-        if not _nicho_es_aviacion():
+        _self_test_8()
+        from unittest.mock import patch
+        with patch.dict(globals(),{'NICHO':'Astronomía'}):
             ejemplo={'id':'prueba','titulo':'Agujeros negros','_universal':True,'_titulo_caso':'Agujeros negros'}
             assert _aero_documento_relevante('Los agujeros negros concentran masa en regiones del espacio. '*10,ejemplo)>0
             assert _aero_documento_relevante('Aeronaves, terminales, aeropuertos y vuelos comerciales. '*10,ejemplo)==0
             assert evaluar_relevancia_foto(ejemplo,'File:Black holes agujeros negros photo.jpg',{},'agujeros negros')[0]>0
-            print('OK: nicho universal, documentación y recursos visuales sin restricciones aeronáuticas')
+        print('OK: nicho universal, documentación y recursos visuales sin restricciones aeronáuticas')
     elif '--auth-init' in sys.argv:
         iniciar_oauth_local()
     elif '--check-auth' in sys.argv:
@@ -4513,5 +4752,12 @@ if __name__=='__main__':
             ('Gemini',os.getenv('GEMINI_API_KEY')),('Groq',os.getenv('GROQ_API_KEY')),
             ('OpenRouter',os.getenv('OPENROUTER_API_KEY'))] if e))
     else:
-        _univ_activar_catalogo()
-        ejecutar()
+        if PUBLICAR_EN_YOUTUBE and not AERO_IA_DRY_RUN and not CREAR_VISTA_PREVIA:
+            asegurar_dependencias()
+            _previos=_cola_reanudar(ruta_historial(),VIDEOS_POR_EJECUCION)
+            if _previos is None:
+                _univ_activar_catalogo()
+                ejecutar()
+        else:
+            _univ_activar_catalogo()
+            ejecutar()
