@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM UNIVERSAL 8.5 · CURIOSITY ENGINE · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM UNIVERSAL 8.6 · CURIOSITY ENGINE · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música cinematográfica original sintetizada con Python.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA. Para relatos de terror se admiten ilustraciones originales procedurales debidamente identificadas.
@@ -69,7 +69,7 @@ AERO_CACHE_DOCUMENTAL = os.getenv('AERO_CACHE_DOCUMENTAL','true').lower() == 'tr
 AERO_CACHE_DIR = Path(os.getenv('AERO_CACHE_DIR','state/aero_documentos'))
 AERO_CACHE_DIAS = max(1,int(os.getenv('AERO_CACHE_DIAS','45')))
 AERO_CACHE_VERSION = 5  # relevancia financiera específica y extracción mejorada
-VERSION_SCRIPT = "8.5"
+VERSION_SCRIPT = "8.6"
 AERO_GUIONES_DIR = Path(os.getenv("AERO_GUIONES_DIR", "state/aero_guiones"))
 AERO_GUIONES_DIAS = max(1, min(30, int(os.getenv("AERO_GUIONES_DIAS", "14"))))
 AERO_MAX_DOCUMENTOS = max(1,min(8,int(os.getenv('AERO_MAX_DOCUMENTOS','4'))))
@@ -2748,7 +2748,7 @@ def buscar_fotos(caso,session,carpeta):
         for candidato in candidatos:
             _,archivo,info,*_=candidato
             evidencia=_metadatos_objeto_83(archivo,info.get('extmetadata') or {})
-            if any(_score_escena_83(caso,i,evidencia)[0]>0 for i in range(len(escenas))):
+            if (_nicho_es_industria_aeronautica() and _industria_visual_86(evidencia)) or any(_score_escena_83(caso,i,evidencia)[0]>0 for i in range(len(escenas))):
                 candidatos_validos.append(candidato)
             else:descartes.append({'archivo':archivo,'razon':'Sin correspondencia con ninguna escena narrada (8.5)'})
         candidatos=candidatos_validos
@@ -4350,6 +4350,11 @@ def _aero_consultas(caso):
             '"'+titulo+'" documentación técnica']
 
 def _consultas_fotos(caso):
+    if _nicho_es_industria_aeronautica():
+        limite=max(6,min(18,int(os.getenv('AERO_CONSULTAS_FOTOS','14'))))
+        especificas=_consultas_industria_86(caso)
+        base=['commercial passenger airliner airport apron','commercial aircraft turbofan engine','airport air traffic control tower','commercial aircraft maintenance hangar','airport passenger terminal jet bridge']
+        return list(dict.fromkeys(especificas[:max(1,limite-len(base))]+base+especificas))[:limite]
     if not caso.get('_universal'):
         base=_UNIV_CONSULTAS_FOTOS_ORIGINAL(caso)
         contextual=_consultas_visuales_83(caso)
@@ -4358,6 +4363,13 @@ def _consultas_fotos(caso):
     return list(dict.fromkeys(_consultas_visuales_83(caso)+_curiosity_consultas_fotos(caso,titulo)))
 
 def evaluar_relevancia_foto(caso,titulo,metadata,busqueda):
+    if _nicho_es_industria_aeronautica():
+        objeto=_metadatos_objeto_83(titulo,metadata)
+        clases=_industria_visual_86(objeto)
+        if not clases:return 0,[]
+        plan=[p for p in caso.get('_plan_visual',[]) if p[0]!='cta']
+        mejor=max((_score_escena_83(caso,i,objeto)[0] for i in range(len(plan))),default=0)
+        return 10+mejor,sorted(clases)
     if not caso.get('_universal'):
         if _es_financiero(caso):
             return _foto_financiera_83(caso,titulo,metadata)
@@ -4809,11 +4821,15 @@ def _curiosity_asignar_escenas(caso,fotos,creditos,carpeta):
             c=creditos[j]
             evidencia=c.get('titulo','')+' '+c.get('objeto_visual',c.get('detalle_visual',''))
             score,hits=_score_escena_83(caso,i,evidencia)
+            if _nicho_es_industria_aeronautica():
+                clases=_industria_visual_86(evidencia)
+                if not clases:continue
+                score,hits=_puntuacion_industria_86(caso,i,evidencia,clases)
             if score>0:
-                opciones.append((score-2*usos.get(j,0),-usos.get(j,0),j,hits))
+                opciones.append((score-(8 if _nicho_es_industria_aeronautica() else 2)*usos.get(j,0),-usos.get(j,0),j,hits))
         if opciones:
             _,_,j,hits=max(opciones); usos[j]=usos.get(j,0)+1; path=fotos[j]
-            registros.append({'escena':i+1,'archivo':Path(path).name,'criterio':'coincidencia textual en metadatos, no comprobación visual directa','coincidencias':hits,'narracion':txt,'consulta_visual':consultas[i] if i<len(consultas) else '', 'titulo_recurso':creditos[j].get('titulo','')})
+            registros.append({'escena':i+1,'archivo':Path(path).name,'criterio':('contexto de industria aeronáutica' if 'contexto_aeronautico' in hits else 'coincidencia textual en metadatos, no comprobación visual directa'),'coincidencias':hits,'narracion':txt,'consulta_visual':consultas[i] if i<len(consultas) else '', 'titulo_recurso':creditos[j].get('titulo','')})
         else:
             # Text card is deliberately not a documentary photograph.
             path=Path(carpeta)/f'tarjeta_contextual_{i:02}.jpg'
@@ -4827,9 +4843,16 @@ def _curiosity_asignar_escenas(caso,fotos,creditos,carpeta):
     caso['_mapa_visual']=mapa
     (Path(carpeta)/'PLAN_VISUAL_ESCENAS.json').write_text(json.dumps(registros,ensure_ascii=False,indent=2),encoding='utf-8')
     n_fotos=sum('coincidencias' in r for r in registros)
-    print('  Plan visual: ',n_fotos,'escenas con foto contextual de',len(registros),flush=True)
+    print('  Plan visual: ',n_fotos,'escenas con foto de',len(registros),flush=True)
+    if _nicho_es_industria_aeronautica():
+        respaldo=sum('contexto_aeronautico' in r.get('coincidencias',[]) for r in registros)
+        print(f'  Industria civil: {n_fotos-respaldo} coincidencias directas; {respaldo} fotografías de contexto.',flush=True)
     if plan and PUBLICAR_EN_YOUTUBE and YOUTUBE_PRIVACY!='private':
-        if _es_financiero(caso):
+        if _nicho_es_industria_aeronautica():
+            distintos={r['archivo'] for r in registros if 'coincidencias' in r}
+            if n_fotos!=len(plan) or len(distintos)<min(IMAGENES_MINIMAS,len(plan)):
+                raise EpisodioRecuperable('Industria aeronáutica: se requieren fotos aeronáuticas en todas las escenas y variedad mínima. Revisar PLAN_VISUAL_ESCENAS.json.')
+        elif _es_financiero(caso):
             # Reportajes de economía: los conceptos abstractos se pueden explicar
             # mediante tarjetas originales; se exigen fotos CIVILES contextuales.
             fotos_usadas={r['archivo'] for r in registros if 'coincidencias' in r}
@@ -5177,15 +5200,15 @@ def _ordenar_candidatos_83(caso,candidatos):
     # Cobertura codiciosa: priorizar una foto que cubra una escena aún no cubierta.
     plan=[x for x in caso.get('_plan_visual',[]) if x[0]!='cta']
     if not plan:return sorted(candidatos,key=lambda x:x[0],reverse=True)
-    bolsa=[]; cubiertas=set();resultado=[]
+    bolsa=[]; cubiertas=set();resultado=[]; clases_cubiertas=set()
     for item in candidatos:
         puntos,titulo,info,*_=item
         evidencia=_metadatos_objeto_83(titulo,info.get('extmetadata') or {})
         scores={i:_score_escena_83(caso,i,evidencia)[0] for i in range(len(plan))}
-        bolsa.append((item,{i:v for i,v in scores.items() if v>0}))
+        bolsa.append((item,{i:v for i,v in scores.items() if v>0},_industria_visual_86(evidencia) if _nicho_es_industria_aeronautica() else set()))
     while bolsa:
-        j=max(range(len(bolsa)),key=lambda k:(len(set(bolsa[k][1])-cubiertas),max(bolsa[k][1].values(),default=0),bolsa[k][0][0]))
-        item,scores=bolsa.pop(j);cubiertas.update(scores);resultado.append(item)
+        j=max(range(len(bolsa)),key=lambda k:(len(set(bolsa[k][1])-cubiertas),len(bolsa[k][2]-clases_cubiertas),max(bolsa[k][1].values(),default=0),bolsa[k][0][0]))
+        item,scores,clases=bolsa.pop(j);cubiertas.update(scores);clases_cubiertas.update(clases);resultado.append(item)
     return resultado
 
 def _huella_foto_83(im):
@@ -5277,15 +5300,80 @@ def _self_test_85():
     assert _score_escena_83(otro,0,'High bypass turbofan engine')[0]>0
     print('OK: filtro visual 8.5, hidrógeno, bypass y rechazo de coincidencias genéricas')
 
+
+# 8.6: banco de fotografías de industria civil; contexto explícito, no evidencia del caso.
+_INDUSTRIA_86={
+ 'aeronave':r'\b(?:airliner\w*|commercial (?:aircraft|airplane|jet)|passenger (?:aircraft|plane|jet)|airbus a[23]\d\d|boeing 7\d7|embraer e\d+|atr [47]\d|aeronave comercial|avion comercial)\b',
+ 'motor':r'\b(?:turbofan\w*|turbojet\w*|turboprop\w*|aircraft engine\w*|jet engine\w*|aeroengine\w*|motor aeronautico|motor de avion|cfm56|cfm leap|ge90|genx|tr(e|a)nt [0-9]+)\b',
+ 'control':r'\b(?:air traffic control|airport control tower|control tower at .*airport|atc tower|torre de control aereo|torre de control de aeropuerto|flight dispatch|airline dispatch)\b',
+ 'aeropuerto':r'\b(?:airport (?:apron|terminal|runway|taxiway|gate|jet bridge)|(?:runway|taxiway|terminal|apron) (?:at|of) .*airport|passenger terminal|jet bridge|aeropuerto comercial|terminal aeroportuaria)\b',
+ 'mantenimiento':r'\b(?:aircraft maintenance|airplane maintenance|airline maintenance|aircraft hangar|aircraft landing gear|aircraft tire|aircraft tyre|maintenance hangar|mantenimiento aeronautico|tren de aterrizaje)\b',
+ 'operaciones':r'\b(?:aircraft refueling|aircraft refuelling|airliner refueling|airline baggage|aircraft baggage|aircraft ground handling|airline passenger boarding|aircraft cargo loading|aircraft passenger cabin|passenger cabin seats|airline fleet|commercial aviation)\b',
+ 'fabricacion':r'\b(?:aircraft assembly|aircraft manufacturing|aircraft factory|airbus assembly|boeing assembly|aircraft production|fabricacion de aeronaves)\b',
+}
+def _industria_visual_86(texto):
+    n=_univ_normalizar(str(texto))
+    if _VIS_83_MILITAR.search(n) or re.search(r'\b(?:landaulet|automobile|automovil|locomotive|submarine|submarino|railway|toy airplane|scale model|model aircraft|flight simulator game)\b',n):return set()
+    clases={k for k,p in _INDUSTRIA_86.items() if re.search(p,n)}
+    # Un motor industrial, una torre eléctrica o un avión militar no son respaldo civil.
+    return clases
+
+def _consultas_industria_86(caso):
+    pref={'motor':'aircraft turbofan engine compressor maintenance','atc':'airport air traffic control tower radar','mnt':'commercial aircraft maintenance hangar landing gear','fin':'commercial passenger aircraft airline cabin airport','future':'commercial aircraft technology aircraft assembly','ops':'commercial airliner airport ground operations'}
+    area=_tema_id_actual(caso).split('_')[0]
+    return list(dict.fromkeys(_consultas_visuales_83(caso)+([pref[area]] if area in pref else [])))
+
+def _puntuacion_industria_86(caso,i,evidencia,clases):
+    if not clases:return 0,[]
+    directo,hits=_score_escena_83(caso,i,evidencia)
+    if directo:return 100+directo,hits
+    plan=[x for x in caso.get('_plan_visual',[]) if x[0]!='cta']
+    if i>=len(plan):return 0,[]
+    narr=_univ_normalizar(plan[i][1]); area=_tema_id_actual(caso).split('_')[0]
+    preferidas={'motor':{'motor','mantenimiento'},'mnt':{'mantenimiento','motor'},'atc':{'control','aeropuerto'},'fin':{'aeronave','operaciones','aeropuerto'},'ops':{'aeronave','operaciones','aeropuerto'},'future':{'fabricacion','aeronave','motor'}}.get(area,set())
+    local=set()
+    for k,pat in {'motor':r'motor|turbina|compresor|propulsion','control':r'control aereo|torre|radar|despach','aeropuerto':r'aeropuerto|terminal|pista|rodaje','mantenimiento':r'mantenimiento|neumatic|inspeccion|tren de aterrizaje','operaciones':r'combustible|pasajero|equipaje|carga|asiento','fabricacion':r'fabricacion|ensamblaje|produccion','aeronave':r'avion|aeronave|flota|aerolinea'}.items():
+        if re.search(pat,narr):local.add(k)
+    # Contexto ilustrativo: no se afirma que represente el sistema exacto.
+    return 15+8*len(clases&local)+3*len(clases&preferidas),['contexto_aeronautico']+sorted(clases)
+
+
 if __name__=='__main__':
     print(f'AEROFACTUM UNIVERSAL {VERSION_SCRIPT} | Nicho: {NICHO}',flush=True)
     if '--self-test' in sys.argv:
-        prueba_interna()
+        from unittest.mock import patch
+        with patch.dict(globals(),{'NICHO':'Aviación'}):
+            prueba_interna()
         _self_test_8()
         _self_test_81()
-        _self_test_83()
+        from unittest.mock import patch
+        with patch.dict(globals(),{'NICHO':'Aviación'}):
+            _self_test_83()
         _self_test_84()
         _self_test_85()
+        assert _industria_visual_86("Boeing 737 commercial passenger aircraft")
+        assert _industria_visual_86("airport air traffic control tower")
+        assert _industria_visual_86("aircraft turbofan engine")
+        assert not _industria_visual_86("USAF aircraft turbofan engine")
+        assert not _industria_visual_86("Siemens Schuckert Landaulet automobile")
+        assert not _industria_visual_86("electric power control tower")
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as td, patch.dict(globals(),{'NICHO':'Datos de la Industria Aeronáutica','PUBLICAR_EN_YOUTUBE':True,'YOUTUBE_PRIVACY':'public','IMAGENES_MINIMAS':4}):
+            c={'titulo':'Industria aeronáutica','_episodio':{'caso_id':'atc_01'},'_plan_visual':[('gancho','La torre de control aéreo coordina el tráfico.'),('contexto','El sector tiene una enorme importancia económica.'),('desarrollo','El turbofán impulsa a los aviones.'),('conclusion','Hay muchas oportunidades de crecimiento.') ]}
+            root=Path(td)
+            titulos=['Airport air traffic control tower','Boeing 737 commercial passenger aircraft','Aircraft turbofan engine','Commercial aircraft maintenance hangar']
+            fs=[root/f'foto_{i}.jpg' for i in range(4)]
+            for f in fs:f.touch()
+            cs=[{'titulo':t,'objeto_visual':''} for t in titulos]
+            _curiosity_asignar_escenas(c,fs,cs,root)
+            r=json.loads((root/'PLAN_VISUAL_ESCENAS.json').read_text())
+            assert len(set(c['_mapa_visual']))==4
+            assert r[0]['archivo']==fs[0].name and r[2]['archivo']==fs[2].name
+            assert 'contexto_aeronautico' in r[1]['coincidencias']
+            assert all(_industria_visual_86(x['titulo_recurso']) for x in r)
+            assert evaluar_relevancia_foto(c,'File:USAF aircraft engine.jpg',{},'civil aviation')==(0,[])
+            assert any('control tower' in q for q in _consultas_fotos(c))
+        print("OK: banco de industria aeronáutica civil 8.6, cuatro escenas con fotos distintas y respaldo contextual")
         from unittest.mock import patch
         with patch.dict(globals(),{'NICHO':'Astronomía'}):
             ejemplo={'id':'prueba','titulo':'Agujeros negros','_universal':True,'_titulo_caso':'Agujeros negros'}
