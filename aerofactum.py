@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM UNIVERSAL 8.6 · CURIOSITY ENGINE · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM UNIVERSAL 8.7 · CURIOSITY ENGINE · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música cinematográfica original sintetizada con Python.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA. Para relatos de terror se admiten ilustraciones originales procedurales debidamente identificadas.
@@ -46,6 +46,9 @@ OUTPUT_BASE = Path(os.getenv('AERO_OUTPUT_DIR', '/content/AEROFACTUM' if Path('/
 AERO_IA_MODO = os.getenv('AERO_IA_MODO', 'auto').strip().lower()
 GEMINI_MODELO = os.getenv('GEMINI_MODELO', 'gemini-3.8-flash')
 GROQ_MODELO = os.getenv('GROQ_MODELO', 'openai/gpt-oss-120b')
+GROQ_MODELO_ALTERNATIVO = os.getenv('GROQ_MODELO_ALTERNATIVO', 'openai/gpt-oss-20b').strip()
+_GROQ_MODELO_REAL = GROQ_MODELO
+_GROQ_MODELOS_AGOTADOS = set()
 OPENROUTER_MODELO = os.getenv('OPENROUTER_MODELO', 'openrouter/free').strip()
 # Evitar que los modelos reasoning consuman toda la salida antes del JSON.
 AERO_OPENROUTER_RAZONAMIENTO = os.getenv('AERO_OPENROUTER_RAZONAMIENTO', 'minimal').strip().lower()
@@ -69,7 +72,7 @@ AERO_CACHE_DOCUMENTAL = os.getenv('AERO_CACHE_DOCUMENTAL','true').lower() == 'tr
 AERO_CACHE_DIR = Path(os.getenv('AERO_CACHE_DIR','state/aero_documentos'))
 AERO_CACHE_DIAS = max(1,int(os.getenv('AERO_CACHE_DIAS','45')))
 AERO_CACHE_VERSION = 5  # relevancia financiera específica y extracción mejorada
-VERSION_SCRIPT = "8.6"
+VERSION_SCRIPT = "8.7"
 AERO_GUIONES_DIR = Path(os.getenv("AERO_GUIONES_DIR", "state/aero_guiones"))
 AERO_GUIONES_DIAS = max(1, min(30, int(os.getenv("AERO_GUIONES_DIAS", "14"))))
 AERO_MAX_DOCUMENTOS = max(1,min(8,int(os.getenv('AERO_MAX_DOCUMENTOS','4'))))
@@ -506,7 +509,7 @@ _OPENROUTER_MODELO_REAL = None
 _OPENROUTER_ALTERNATIVO_INTENTADO = False
 
 
-def _openrouter_elegir_gratuito(modelos, excluido=''):
+def _openrouter_elegir_gratuito(modelos, excluido='', permitir_control=False):
     candidatos=[]
     for m in modelos:
         try:
@@ -518,15 +521,18 @@ def _openrouter_elegir_gratuito(modelos, excluido=''):
             if 'text' not in salida:continue
             if float(precio['prompt'])!=0 or float(precio['completion'])!=0:continue
             if float(precio.get('request') or 0)!=0:continue
-            if parametros & {'reasoning','include_reasoning','reasoning_effort'}:continue
-            if m.get('is_reasoning') or (m.get('architecture') or {}).get('is_reasoning'):continue
+            control = bool('reasoning' in parametros)
+            razonador = bool(parametros & {'reasoning','include_reasoning','reasoning_effort'} or m.get('is_reasoning') or (m.get('architecture') or {}).get('is_reasoning'))
+            if razonador and not (permitir_control and control):continue
             if int(m.get('context_length') or 0)<8192:continue
             if maxsalida is not None and int(maxsalida)<3000:continue
-            candidatos.append((('response_format' in parametros), int(m.get('context_length') or 0), mid))
+            candidatos.append((not razonador, ('response_format' in parametros), int(m.get('context_length') or 0), mid, control))
         except (ValueError,TypeError,KeyError):continue
     if not candidatos:return None
-    json_ok,_,mid=max(candidatos)
-    return {'id':mid,'json':json_ok}
+    _,json_ok,_,mid,control=max(candidatos)
+    resultado={'id':mid,'json':json_ok}
+    if control:resultado['control_razonamiento']=True
+    return resultado
 
 
 def _openrouter_preparar_alternativo():
@@ -539,14 +545,21 @@ def _openrouter_preparar_alternativo():
         import requests
         r=requests.get('https://openrouter.ai/api/v1/models',timeout=(5,15))
         r.raise_for_status()
-        _OPENROUTER_ALTERNATIVO=_openrouter_elegir_gratuito(r.json().get('data',[]), _OPENROUTER_MODELO_REAL or OPENROUTER_MODELO)
+        modelos=r.json().get('data',[])
+        _OPENROUTER_ALTERNATIVO=_openrouter_elegir_gratuito(modelos, _OPENROUTER_MODELO_REAL or OPENROUTER_MODELO) or _openrouter_elegir_gratuito(modelos, _OPENROUTER_MODELO_REAL or OPENROUTER_MODELO, permitir_control=True)
     except Exception as exc:
         print('  OpenRouter: catálogo de modelos alternativos no disponible:',str(exc)[:150],flush=True)
         return False
     if _OPENROUTER_ALTERNATIVO:
-        print('  OpenRouter: siguiente intento con modelo gratuito explícito sin parámetros de razonamiento:',_OPENROUTER_ALTERNATIVO['id'],flush=True)
+        print('  OpenRouter: siguiente intento con modelo gratuito explícito con prioridad a baja carga de razonamiento:',_OPENROUTER_ALTERNATIVO['id'],flush=True)
         return True
     return False
+
+
+def _openrouter_reintentar_modelo():
+    global _OPENROUTER_ALTERNATIVO_INTENTADO
+    _OPENROUTER_ALTERNATIVO_INTENTADO=False
+    return _openrouter_preparar_alternativo()
 
 
 def _openrouter_chat(prompt, *, busqueda=False, limitar_razonamiento=True):
@@ -576,8 +589,9 @@ def _openrouter_chat(prompt, *, busqueda=False, limitar_razonamiento=True):
     if alternativo:
         payload['max_tokens']=min(AERO_OPENROUTER_MAX_TOKENS,4500)
         if alternativo['json']:payload['response_format']={'type':'json_object'}
+        if alternativo.get('control_razonamiento'):payload['reasoning']={'enabled':False}
     elif not busqueda and limitar_razonamiento:
-        payload['reasoning']={'effort':AERO_OPENROUTER_RAZONAMIENTO}
+        payload['reasoning']=({'enabled':False} if AERO_OPENROUTER_RAZONAMIENTO in ('none','minimal') else {'effort':AERO_OPENROUTER_RAZONAMIENTO})
     if busqueda:
         if not AERO_OPENROUTER_WEB_SEARCH:
             raise RuntimeError('Búsqueda OpenRouter desactivada por posible costo; configurar AERO_OPENROUTER_WEB_SEARCH=true')
@@ -1444,24 +1458,37 @@ def _consultar_groq(prompt):
     import requests
     key=os.getenv('GROQ_API_KEY','').strip()
     if not key:raise RuntimeError('GROQ_API_KEY no configurada')
-    payload={'model':GROQ_MODELO,'messages':[
-        {'role':'system','content':'Eres un redactor especializado en el nicho indicado. Responde solo JSON válido.'},
-        {'role':'user','content':prompt}],
-        'temperature':0.55,'max_completion_tokens':7000,
-        'response_format':{'type':'json_object'}}
-    global _GROQ_TPM_REINTENTO_USADO
+    global _GROQ_TPM_REINTENTO_USADO, _GROQ_MODELO_REAL
     url='https://api.groq.com/openai/v1/chat/completions'
     headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'}
-    res=requests.post(url,headers=headers,json=payload,timeout=(10,AERO_IA_TIMEOUT))
-    demora=_groq_demora_tpm(res)
-    if demora is not None and not _GROQ_TPM_REINTENTO_USADO:
-        _GROQ_TPM_REINTENTO_USADO=True
-        print(f'  Groq: límite por minuto; esperar {demora:.1f}s según Retry-After y reintentar una sola vez.',flush=True)
-        time.sleep(demora)
+    modelos=list(dict.fromkeys(m for m in (_GROQ_MODELO_REAL,GROQ_MODELO,GROQ_MODELO_ALTERNATIVO) if m and m not in _GROQ_MODELOS_AGOTADOS))
+    ultimo='Groq HTTP 429: modelos configurados agotados'
+    for modelo in modelos:
+        payload={'model':modelo,'messages':[
+            {'role':'system','content':'Eres un redactor especializado en el nicho indicado. Responde solo JSON válido.'},
+            {'role':'user','content':prompt}],
+            'temperature':0.55,'max_completion_tokens':4500,
+            'response_format':{'type':'json_object'}}
+        if modelo in ('openai/gpt-oss-120b','openai/gpt-oss-20b'):
+            payload['reasoning_effort']='low'
+        print('  Groq: modelo de guion',modelo,flush=True)
         res=requests.post(url,headers=headers,json=payload,timeout=(10,AERO_IA_TIMEOUT))
-    if not res.ok:raise RuntimeError(f'Groq HTTP {res.status_code}: '+res.text[:350])
-    respuesta=res.json()['choices'][0]['message']['content']
-    return _limpiar_json_ia(respuesta)
+        demora=_groq_demora_tpm(res)
+        if demora is not None and not _GROQ_TPM_REINTENTO_USADO:
+            _GROQ_TPM_REINTENTO_USADO=True
+            print(f'  Groq: límite por minuto; esperar {demora:.1f}s según Retry-After y reintentar una sola vez.',flush=True)
+            time.sleep(demora)
+            res=requests.post(url,headers=headers,json=payload,timeout=(10,AERO_IA_TIMEOUT))
+        if res.ok:
+            _GROQ_MODELO_REAL=modelo
+            return _limpiar_json_ia(res.json()['choices'][0]['message']['content'])
+        ultimo=f'Groq HTTP {res.status_code}: '+res.text[:350]
+        if res.status_code==429 or res.status_code==404 or (res.status_code==400 and 'decommission' in res.text.lower()):
+            _GROQ_MODELOS_AGOTADOS.add(modelo)
+            print('  Groq: modelo no disponible; se considerará otro modelo configurado, sin repetir el agotado.',flush=True)
+            continue
+        raise RuntimeError(ultimo)
+    raise RuntimeError(ultimo)
 
 
 def _normalizar_evidencia(texto):
@@ -1807,6 +1834,8 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
         if motor=='openrouter' and OPENROUTER_MODELO=='openrouter/free' and not _OPENROUTER_ALTERNATIVO_INTENTADO:
             _openrouter_preparar_alternativo()
         prompt_motor=prompt
+        if motor=='openrouter':
+            prompt_motor='Devuelve únicamente JSON completo. '+json.dumps(instruccion,ensure_ascii=False,separators=(',',':'))
         for intento in range(1,3):
             try:
                 print(f'  Redactando con IA: {motor} intento {intento}/2',flush=True)
@@ -1844,7 +1873,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                 episodio['titulo']=titulo_ia
                 print('  Título YouTube investigado:',titulo_ia,flush=True)
                 (carpeta/'GUION_IA.json').write_text(json.dumps({
-                    'motor':motor, 'modelo':{'gemini':GEMINI_MODELO,'groq':GROQ_MODELO,
+                    'motor':motor, 'modelo':{'gemini':GEMINI_MODELO,'groq':_GROQ_MODELO_REAL,
                               'openrouter':(_OPENROUTER_MODELO_REAL or OPENROUTER_MODELO)}[motor],
                     'fecha_utc':datetime.now(timezone.utc).isoformat(),
                     'fuentes':[{'id':d['id'],'nombre':d['nombre'],'url':d['url']} for d in documentos],
@@ -1859,7 +1888,7 @@ def generar_guion_investigado(caso,episodio,documentos,carpeta):
                 # Si los tokens se consumen razonando, cambiar la estrategia
                 # del siguiente intento; nunca usar razonamiento como guion.
                 if motor=='openrouter' and isinstance(e,OpenRouterSalidaAgotada):
-                    if intento==1 and _openrouter_preparar_alternativo():
+                    if intento==1 and _openrouter_reintentar_modelo():
                         # La instrucción compacta conserva el esquema y las citas verificadas.
                         breve={k:instruccion[k] for k in ('tarea','tema','categoria','tipo_narrativo','citas_verificadas_para_elegir','normas','estructura')}
                         prompt_motor='Devuelve solo el objeto JSON completo. Sin análisis externo. '+json.dumps(breve,ensure_ascii=False,separators=(',',':'))
