@@ -11,16 +11,6 @@
     "salida": "output/AEROFACTUM/ops_06_20261113_160458_538578/AEROFACTUM.mp4"
   },
   {
-    "episodio": "atc_10",
-    "caso": "atc_10",
-    "titulo": "¿Por qué cambia la ruta de vuelo cuando el espacio aéreo se reconfigura por una TFR?",
-    "fecha_utc": "2026-11-14T02:03:36.564148+00:00",
-    "youtube_id": "EbkFmfxnPLI",
-    "youtube_url": "https://www.youtube.com/watch?v=EbkFmfxnPLI",
-    "youtube_estado": "completo",
-    "salida": "output/AEROFACTUM/atc_10_20261114_020131_900341/AEROFACTUM.mp4"
-  },
-  {
     "episodio": "ops_08",
     "caso": "ops_08",
     "titulo": "¿Por qué una checklist salva vuelos cuando el tiempo se vuelve crítico?",
@@ -39,16 +29,6 @@
     "youtube_url": "https://www.youtube.com/watch?v=2QNgMdB-BSY",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/nav_02_20261114_184724_906513/AEROFACTUM.mp4"
-  },
-  {
-    "episodio": "motor_02",
-    "caso": "motor_02",
-    "titulo": "¿Por qué un compresor necesita tantas etapas para comprimir el aire 10 veces?",
-    "fecha_utc": "2026-11-15T19:31:26.403646+00:00",
-    "youtube_id": "QV8fAeftWvg",
-    "youtube_url": "https://www.youtube.com/watch?v=QV8fAeftWvg",
-    "youtube_estado": "completo",
-    "salida": "output/AEROFACTUM/motor_02_20261115_192737_607325/AEROFACTUM.mp4"
   },
   {
     "episodio": "ops_10",
@@ -91,16 +71,6 @@
     "salida": "output/AEROFACTUM/ops_01_20261117_122602_910614/AEROFACTUM.mp4"
   },
   {
-    "episodio": "historias-de-terror-1278868",
-    "caso": "historias-de-terror-1278868",
-    "titulo": "¿Qué misterio esconden los espectros del Sanatorio Durán en Costa Rica?",
-    "fecha_utc": "2026-11-17T14:52:18.195307+00:00",
-    "youtube_id": "4vdKCnB1Ssg",
-    "youtube_url": "https://www.youtube.com/watch?v=4vdKCnB1Ssg",
-    "youtube_estado": "completo",
-    "salida": "output/AEROFACTUM/historias-de-terror-1278868_20261117_144848_632953/AEROFACTUM.mp4"
-  },
-  {
     "episodio": "industria-aeronautica-655013",
     "caso": "industria-aeronautica-655013",
     "titulo": "¿Por qué la Regia Aeronautica brilló en la Segunda Guerra Mundial y perdió su arsenal?",
@@ -111,16 +81,6 @@
     "salida": "output/AEROFACTUM/industria-aeronautica-655013_20261117_152613_512856/AEROFACTUM.mp4"
   },
   {
-    "episodio": "historias-de-terror-8157785",
-    "caso": "historias-de-terror-8157785",
-    "titulo": "¿Por qué el fantasma Teke Teke arrastra su cuerpo y acecha las vías japonesas?",
-    "fecha_utc": "2026-11-17T16:45:28.387180+00:00",
-    "youtube_id": "Ta8BbP5B3Wk",
-    "youtube_url": "https://www.youtube.com/watch?v=Ta8BbP5B3Wk",
-    "youtube_estado": "completo",
-    "salida": "output/AEROFACTUM/historias-de-terror-8157785_20261117_164348_470595/¿Por qué el fantasma Teke Teke arrastra su cuerpo y acecha las vías japonesas.mp4"
-  },
-  {
     "episodio": "historias-de-la-aviacion-371975",
     "caso": "historias-de-la-aviacion-371975",
     "titulo": "¿Cómo Emilio Herrera diseñó el primer traje espacial español y qué legado dejó?",
@@ -129,16 +89,6 @@
     "youtube_url": "https://www.youtube.com/watch?v=a0Ev9t1fx7Y",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/historias-de-la-aviacion-371975_20261117_170350_320596/¿Cómo Emilio Herrera diseñó el primer traje espacial español y qué legado dejó.mp4"
-  },
-  {
-    "episodio": "historias-de-terror-875370",
-    "caso": "historias-de-terror-875370",
-    "titulo": "¿Por qué la conspiración de \"Paul está muerto\" sigue aterrorizando a los fans?",
-    "fecha_utc": "2026-11-17T17:35:21.672280+00:00",
-    "youtube_id": "X8UNAmtFoH8",
-    "youtube_url": "https://www.youtube.com/watch?v=X8UNAmtFoH8",
-    "youtube_estado": "completo",
-    "salida": "output/AEROFACTUM/historias-de-terror-875370_20261117_173316_666228/¿Por qué la conspiración de Paul está muerto sigue aterrorizando a los fans.mp4"
   },
   {
     "episodio": "motores-aeronauticos-8775856",
@@ -159,16 +109,6 @@
     "youtube_url": "https://www.youtube.com/watch?v=0U6PyZJmzXE",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/motores-aeronauticos-3855959_20261117_190100_846367/Continental Motors, Inc. ¿qué conviene comprender de este fenómeno.mp4"
-  },
-  {
-    "episodio": "motores-aeronauticos-43803",
-    "caso": "motores-aeronauticos-43803",
-    "titulo": "¿Por qué los motores del Concorde fallaron en el accidente del vuelo 4590?",
-    "fecha_utc": "2026-11-17T22:00:23.330505+00:00",
-    "youtube_id": "ANfv814JjqE",
-    "youtube_url": "https://www.youtube.com/watch?v=ANfv814JjqE",
-    "youtube_estado": "completo",
-    "salida": "output/AEROFACTUM/motores-aeronauticos-43803_20261117_215646_494278/¿Por qué los motores del Concorde fallaron en el accidente del vuelo 4590.mp4"
   },
   {
     "episodio": "fin_03",
