@@ -149,5 +149,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=SBlIIgZh8as",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/motor_04_20261119_030244_784772/¿Por qué el bypass ratio define la eficiencia de un turbofan.mp4"
+  },
+  {
+    "episodio": "future_02",
+    "caso": "future_02",
+    "titulo": "¿Por qué un avión eléctrico se queda sin energía antes de despegar?",
+    "fecha_utc": "2026-11-19T12:16:28.090730+00:00",
+    "youtube_id": "6KKPN4um0KE",
+    "youtube_url": "https://www.youtube.com/watch?v=6KKPN4um0KE",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/future_02_20261119_121321_638781/¿Por qué un avión eléctrico se queda sin energía antes de despegar.mp4"
   }
 ]
