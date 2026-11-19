@@ -189,5 +189,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=Qd2-GZ9MDWw",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/mnt_07_20261118_175407_366211/¿Por qué el registro técnico decide la seguridad de cada vuelo.mp4"
+  },
+  {
+    "episodio": "ops_04",
+    "caso": "ops_04",
+    "titulo": "¿Cómo se calcula el peso y balance de un avión y por qué es crítico?",
+    "fecha_utc": "2026-11-19T00:55:14.665193+00:00",
+    "youtube_id": "0fhB1F2_nZc",
+    "youtube_url": "https://www.youtube.com/watch?v=0fhB1F2_nZc",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/ops_04_20261119_005317_658017/¿Cómo se calcula el peso y balance de un avión y por qué es crítico.mp4"
   }
 ]
