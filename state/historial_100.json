@@ -199,5 +199,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=0fhB1F2_nZc",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/ops_04_20261119_005317_658017/¿Cómo se calcula el peso y balance de un avión y por qué es crítico.mp4"
+  },
+  {
+    "episodio": "motor_04",
+    "caso": "motor_04",
+    "titulo": "¿Por qué el bypass ratio define la eficiencia de un turbofan?",
+    "fecha_utc": "2026-11-19T03:05:52.169073+00:00",
+    "youtube_id": "SBlIIgZh8as",
+    "youtube_url": "https://www.youtube.com/watch?v=SBlIIgZh8as",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/motor_04_20261119_030244_784772/¿Por qué el bypass ratio define la eficiencia de un turbofan.mp4"
   }
 ]
