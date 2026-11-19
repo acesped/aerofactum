@@ -159,5 +159,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=6KKPN4um0KE",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/future_02_20261119_121321_638781/¿Por qué un avión eléctrico se queda sin energía antes de despegar.mp4"
+  },
+  {
+    "episodio": "motor_05",
+    "caso": "motor_05",
+    "titulo": "Cómo funciona un turbohélice: ¿qué conviene comprender de este fenómeno?",
+    "fecha_utc": "2026-11-19T15:19:18.228481+00:00",
+    "youtube_id": "tS2YRgh9hrk",
+    "youtube_url": "https://www.youtube.com/watch?v=tS2YRgh9hrk",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/motor_05_20261119_151729_745401/Cómo funciona un turbohélice ¿qué conviene comprender de este fenómeno.mp4"
   }
 ]
