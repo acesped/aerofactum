@@ -169,5 +169,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=tS2YRgh9hrk",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/motor_05_20261119_151729_745401/Cómo funciona un turbohélice ¿qué conviene comprender de este fenómeno.mp4"
+  },
+  {
+    "episodio": "ops_05",
+    "caso": "ops_05",
+    "titulo": "¿Por qué calculamos el combustible exacto antes de cada vuelo?",
+    "fecha_utc": "2026-11-19T21:42:39.996854+00:00",
+    "youtube_id": "ZJZMX7S6onA",
+    "youtube_url": "https://www.youtube.com/watch?v=ZJZMX7S6onA",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/ops_05_20261119_213904_022953/¿Por qué calculamos el combustible exacto antes de cada vuelo.mp4"
   }
 ]
