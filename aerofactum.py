@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AEROFACTUM UNIVERSAL 8.7 · CURIOSITY ENGINE · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
+AEROFACTUM UNIVERSAL 8.8 · CURIOSITY ENGINE · GitHub Actions + YouTube @aerofactum · MOTOR ORIGINAL MISTERIO CIENCIA · UNA SOLA CELDA DE COLAB / PYTHON
 Motor audiovisual original de MISTERIO CIENCIA adaptado a 100 temas aeronáuticos,
 Ken Burns cinematográfico, voz Edge TTS, subtítulos ASS y música cinematográfica original sintetizada con Python.
 IA Gemini/Groq con niveles gratuitos sujetos a cupos. CPU. Sin fotografías inventadas por IA. Para relatos de terror se admiten ilustraciones originales procedurales debidamente identificadas.
@@ -72,7 +72,7 @@ AERO_CACHE_DOCUMENTAL = os.getenv('AERO_CACHE_DOCUMENTAL','true').lower() == 'tr
 AERO_CACHE_DIR = Path(os.getenv('AERO_CACHE_DIR','state/aero_documentos'))
 AERO_CACHE_DIAS = max(1,int(os.getenv('AERO_CACHE_DIAS','45')))
 AERO_CACHE_VERSION = 5  # relevancia financiera específica y extracción mejorada
-VERSION_SCRIPT = "8.7"
+VERSION_SCRIPT = "8.9"
 AERO_GUIONES_DIR = Path(os.getenv("AERO_GUIONES_DIR", "state/aero_guiones"))
 AERO_GUIONES_DIAS = max(1, min(30, int(os.getenv("AERO_GUIONES_DIAS", "14"))))
 AERO_MAX_DOCUMENTOS = max(1,min(8,int(os.getenv('AERO_MAX_DOCUMENTOS','4'))))
@@ -2748,6 +2748,10 @@ def buscar_fotos(caso,session,carpeta):
                 if not es_foto_real_metadata(titulo_archivo,meta):
                     descartes.append({'archivo':titulo_archivo,'razon':'No es fotografía real: esquema, mapa, render, ilustración u otro recurso gráfico','busqueda':busqueda})
                     continue
+                evidencia_visual=titulo_archivo+' '+ ' '.join(limpiar_html(meta.get(k,{}).get('value','')) for k in ('ImageDescription','ObjectName','Categories'))
+                if not _foto_sin_personas_89(evidencia_visual):
+                    descartes.append({'archivo':titulo_archivo,'razon':'Foto descartada por mostrar o describir personas/tripulación','busqueda':busqueda})
+                    continue
                 puntos,matches=evaluar_relevancia_foto(caso,titulo_archivo,meta,busqueda)
                 if puntos==0:
                     descartes.append({'archivo':titulo_archivo,'razon':'Sin anclas temáticas suficientes','busqueda':busqueda})
@@ -2777,9 +2781,15 @@ def buscar_fotos(caso,session,carpeta):
         for candidato in candidatos:
             _,archivo,info,*_=candidato
             evidencia=_metadatos_objeto_83(archivo,info.get('extmetadata') or {})
-            if (_nicho_es_industria_aeronautica() and _industria_visual_86(evidencia)) or any(_score_escena_83(caso,i,evidencia)[0]>0 for i in range(len(escenas))):
+            if _nicho_es_industria_aeronautica():
+                if _foto_avion_comercial_89(evidencia) and 'aeronave' in _industria_visual_86(evidencia):
+                    candidatos_validos.append(candidato)
+                else:
+                    descartes.append({'archivo':archivo,'razon':'En industria aeronáutica se aceptan solo fotos reales de aviones comerciales, sin personas'})
+            elif any(_score_escena_83(caso,i,evidencia)[0]>0 for i in range(len(escenas))):
                 candidatos_validos.append(candidato)
-            else:descartes.append({'archivo':archivo,'razon':'Sin correspondencia con ninguna escena narrada (8.5)'})
+            else:
+                descartes.append({'archivo':archivo,'razon':'Sin correspondencia con ninguna escena narrada (8.5)'})
         candidatos=candidatos_validos
     candidatos=_ordenar_candidatos_83(caso,candidatos)
     print(f'  Commons: {len(candidatos)} fotografías candidatas tras {len(queries)} consultas planificadas.',flush=True)
@@ -3663,7 +3673,8 @@ def finalizar_video(video,audio,ass,carpeta,caso):
 # OAUTH: usar Secrets YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN.
 # ¡Nunca introducir estas credenciales en el repositorio!
 YOUTUBE_CANAL = '@aerofactum'
-YOUTUBE_PRIVACY = os.getenv('YOUTUBE_PRIVACY', 'private').lower().strip()
+# Público por defecto; se conserva un modo de revisión explícitamente configurado.
+YOUTUBE_PRIVACY = (os.getenv('YOUTUBE_PRIVACY') or 'public').lower().strip() or 'public'
 PUBLICAR_EN_YOUTUBE = os.getenv('PUBLICAR_EN_YOUTUBE', 'false').lower() == 'true'
 PERMITIR_PUBLICACION_SIN_REVISION = os.getenv('ALLOW_UNREVIEWED_PUBLICATION', 'false').lower() == 'true'
 YOUTUBE_SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
@@ -3910,6 +3921,38 @@ def _aero_declaracion_ia_youtube(caso, creditos):
     return requiere_declaracion, list(dict.fromkeys(motivos))
 
 
+def _youtube_estado_privacidad(servicio, video_id, deseada, corregir=False):
+    """Comprueba el estado real del ID recién cargado; no vuelve a subir el MP4.
+    Si se solicita, hace como máximo una actualización normal de privacidad.
+    No intenta eludir restricciones de YouTube ni cambia otros videos.
+    """
+    informe={'video_id':video_id,'solicitada':deseada,'real':None,
+             'correccion_intentada':False,'confirmada':False}
+    def consultar():
+        respuesta=servicio.videos().list(part='status',id=video_id).execute(num_retries=2)
+        items=respuesta.get('items',[])
+        if not items or items[0].get('id')!=video_id:
+            raise RuntimeError('YouTube no devolvió el estado del ID solicitado.')
+        return items[0].get('status',{})
+    try:
+        estado=consultar()
+        informe['real']=estado.get('privacyStatus')
+        if (corregir and deseada=='public' and informe['real'] in ('private','unlisted')
+                and estado.get('uploadStatus') not in ('failed','rejected','deleted')):
+            informe['correccion_intentada']=True
+            campos=('embeddable','license','publicStatsViewable','selfDeclaredMadeForKids','containsSyntheticMedia')
+            nuevo={k:estado[k] for k in campos if k in estado}
+            nuevo['privacyStatus']=deseada
+            servicio.videos().update(part='status',body={'id':video_id,'status':nuevo}).execute()
+            estado=consultar()
+            informe['real']=estado.get('privacyStatus')
+        informe['confirmada']=informe['real']==deseada
+    except Exception as exc:
+        informe['error']=str(exc)[:600]
+    print('YouTube privacidad solicitada:',deseada,'| efectiva:',informe['real'] or 'no verificada',flush=True)
+    return informe
+
+
 def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,historial,canal_esperado=None):
     from googleapiclient.http import MediaFileUpload
     if YOUTUBE_PRIVACY not in ('private','unlisted','public'):
@@ -3937,6 +3980,7 @@ def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,
          'status':{'privacyStatus':YOUTUBE_PRIVACY,'selfDeclaredMadeForKids':False,
                    'containsSyntheticMedia':ia_requiere_si}}
     # Solo videos nuevos: una vez obtenido el ID, se guarda de inmediato para impedir duplicados.
+    print('YouTube privacidad solicitada al subir:',YOUTUBE_PRIVACY,flush=True)
     solicitud=servicio.videos().insert(part='snippet,status',body=cuerpo,
         media_body=MediaFileUpload(str(video),mimetype='video/mp4',chunksize=8*1024*1024,resumable=True))
     respuesta=subir_reanudable(solicitud,'Subida de vídeo')
@@ -3959,8 +4003,15 @@ def publicar_youtube(video,miniatura,srt,caso,episodio,fuentes,creditos,carpeta,
     except Exception as e:
         errores.append('subtitulos: '+str(e)[:500])
         print('AVISO: falló SRT; el video ya existe:',e,flush=True)
+    visibilidad=_youtube_estado_privacidad(servicio,video_id,YOUTUBE_PRIVACY,corregir=True)
+    _cola_json(Path(carpeta)/'PRIVACIDAD_YOUTUBE.json',visibilidad)
+    if not visibilidad['confirmada']:
+        errores.append('privacidad: '+str(visibilidad.get('real') or 'no verificada'))
     estado='completo' if not errores else 'pendiente: '+' | '.join(errores)
     escribir_registro_publicacion(historial,episodio,caso,video_id,carpeta,estado)
+    if not visibilidad['confirmada']:
+        raise PublicacionAplazada('Video ya subido (ID '+video_id+'), pero privacidad '+YOUTUBE_PRIVACY+
+            ' no confirmada. Revisar PRIVACIDAD_YOUTUBE.json y YouTube Studio. No se volverá a subir.')
     if any(err.startswith('miniatura:') for err in errores):
         raise RuntimeError('El video ya se subió a YouTube (ID '+video_id+
                            '), pero la miniatura no se completó. NO vuelvas a subir '
@@ -4858,7 +4909,12 @@ def _curiosity_asignar_escenas(caso,fotos,creditos,carpeta):
                 opciones.append((score-(8 if _nicho_es_industria_aeronautica() else 2)*usos.get(j,0),-usos.get(j,0),j,hits))
         if opciones:
             _,_,j,hits=max(opciones); usos[j]=usos.get(j,0)+1; path=fotos[j]
-            registros.append({'escena':i+1,'archivo':Path(path).name,'criterio':('contexto de industria aeronáutica' if 'contexto_aeronautico' in hits else 'coincidencia textual en metadatos, no comprobación visual directa'),'coincidencias':hits,'narracion':txt,'consulta_visual':consultas[i] if i<len(consultas) else '', 'titulo_recurso':creditos[j].get('titulo','')})
+            criterio='coincidencia textual en metadatos, no comprobación visual directa'
+            if _nicho_es_industria_aeronautica():
+                criterio='foto real de avión comercial civil, usada como contexto aeronáutico'
+            elif 'contexto_aeronautico' in hits:
+                criterio='contexto de industria aeronáutica'
+            registros.append({'escena':i+1,'archivo':Path(path).name,'criterio':criterio,'coincidencias':hits,'narracion':txt,'consulta_visual':consultas[i] if i<len(consultas) else '', 'titulo_recurso':creditos[j].get('titulo','')})
         else:
             # Text card is deliberately not a documentary photograph.
             path=Path(carpeta)/f'tarjeta_contextual_{i:02}.jpg'
@@ -4908,6 +4964,19 @@ def _cola_intento(p,d,historial):
     # Check history FIRST: an upload with a returned ID must never be repeated.
     existente=next((r for r in leer_historial(historial) if r.get('episodio')==d['episodio']['id'] and r.get('youtube_id')),None)
     if existente:
+        if 'privacidad:' in existente.get('youtube_estado','') or existente.get('youtube_estado')=='video_subido':
+            servicio=youtube_servicio()
+            canal=validar_canal_youtube(servicio)
+            if d.get('canal_id') and canal!=d['canal_id']:
+                raise RuntimeError('Canal de la cola distinto del canal OAuth.')
+            visibilidad=_youtube_estado_privacidad(servicio,existente['youtube_id'],d['privacidad'])
+            _cola_json(p.parent/'PRIVACIDAD_YOUTUBE.json',visibilidad)
+            if not visibilidad['confirmada']:
+                raise PublicacionAplazada('Video existente '+existente['youtube_id']+' con privacidad no confirmada; revisar YouTube Studio. NO se vuelve a subir.')
+            partes=existente.get('youtube_estado','').removeprefix('pendiente: ').split(' | ')
+            otros=[x for x in partes if x.startswith(('miniatura:','subtitulos:'))]
+            estado='pendiente: '+' | '.join(otros) if otros else 'privacidad_confirmada_revisar_metadatos'
+            existente=escribir_registro_publicacion(historial,d['episodio'],d['caso'],existente['youtube_id'],p.parent,estado)
         d.update(estado='publicado',youtube_id=existente['youtube_id'],youtube_estado=existente.get('youtube_estado','video_subido'))
         _cola_json(p,d)
         print('Video ya registrado; no se vuelve a subir:',existente['youtube_id'],flush=True)
@@ -4931,7 +5000,7 @@ def _cola_intento(p,d,historial):
     # Keep manifest; remove duplicate media only when original still exists locally.
     original=Path(d.get('carpeta_original',''))
     if original.is_dir() and original.resolve()!=p.parent.resolve() and all((original/d[k]).is_file() for k in ('video','miniatura','srt')):
-        for archivo in ('PUBLICACION_YOUTUBE.json','DECLARACION_IA_YOUTUBE.json','MINIATURA_YOUTUBE.json'):
+        for archivo in ('PUBLICACION_YOUTUBE.json','DECLARACION_IA_YOUTUBE.json','MINIATURA_YOUTUBE.json','PRIVACIDAD_YOUTUBE.json'):
             if (p.parent/archivo).is_file():shutil.copy2(p.parent/archivo,original/archivo)
         datos=leer_historial(historial)
         for r in datos:
@@ -5068,7 +5137,7 @@ def _guion_cache_cargar(episodio,caso):
     try:
         p=_guion_cache_path(episodio['id'])
         guarda=json.loads(p.read_text(encoding='utf-8'))
-        if (guarda['version']!=VERSION_SCRIPT or guarda['nicho']!=NICHO or
+        if (guarda['version'] not in (VERSION_SCRIPT, '8.7') or guarda['nicho']!=NICHO or
             guarda['episodio']!=episodio['id'] or guarda['tema']!=caso.get('_titulo_caso') or
             guarda['modo_viral']!=MODO_VIRAL or guarda['pregunta_final']!=PREGUNTA_FINAL_ESPECIFICA or
             not 0<=time.time()-guarda['timestamp']<=AERO_GUIONES_DIAS*86400):return None
@@ -5347,28 +5416,69 @@ def _industria_visual_86(texto):
     # Un motor industrial, una torre eléctrica o un avión militar no son respaldo civil.
     return clases
 
+_PERSONAS_89 = re.compile(
+    r'\b(?:people|person|persons|man|men|woman|women|child|children|crew|aircrew|pilot|pilots|'
+    r'passenger|passengers|airman|airmen|worker|workers|portrait|selfie|group|team|officer|soldier|'
+    r'hombre|mujer|persona|personas|nino|nina|ninos|ninas|tripulacion|piloto|pilotos|pasajero|pasajeros|'
+    r'trabajador|trabajadores|retrato|grupo|equipo)\b', re.I)
+
+_AERONAVE_COMERCIAL_89 = re.compile(
+    r'\b(?:commercial (?:aircraft|airplane|airliner|jet)|passenger (?:aircraft|airplane|plane|jet)|'
+    r'civil aviation|civil aircraft|civil airliner|airliner|airbus a[23]\d\d|boeing 7\d7|'
+    r'embraer e\d+|atr [47]\d|commercial aviation|aeronave comercial|avion comercial|avion de pasajeros|'
+    r'aerolinea|airline fleet)\b', re.I)
+
+
+def _foto_sin_personas_89(texto):
+    n=_univ_normalizar(str(texto))
+    return not _PERSONAS_89.search(n)
+
+
+def _foto_avion_comercial_89(texto):
+    n=_univ_normalizar(str(texto))
+    return bool(_AERONAVE_COMERCIAL_89.search(n)) and not _VIS_83_MILITAR.search(n) and _foto_sin_personas_89(n)
+
 def _consultas_industria_86(caso):
-    pref={'motor':'aircraft turbofan engine compressor maintenance','atc':'airport air traffic control tower radar','mnt':'commercial aircraft maintenance hangar landing gear','fin':'commercial passenger aircraft airline cabin airport','future':'commercial aircraft technology aircraft assembly','ops':'commercial airliner airport ground operations'}
+    # Para este nicho se priorizan SIEMPRE fotos reales de aviones comerciales.
+    base=[
+        'commercial passenger airliner airport apron',
+        'commercial airliner taxiing airport',
+        'airbus a320 commercial passenger aircraft',
+        'boeing 737 commercial passenger aircraft',
+        'commercial airliner on runway',
+        'commercial aircraft at airport gate',
+        'commercial aviation fleet airliner',
+    ]
     area=_tema_id_actual(caso).split('_')[0]
-    return list(dict.fromkeys(_consultas_visuales_83(caso)+([pref[area]] if area in pref else [])))
+    por_area={
+        'motor':['commercial airliner turbofan engine under wing','airliner engine nacelle close up'],
+        'atc':['commercial aircraft near control tower','commercial airliner taxiway airport'],
+        'mnt':['commercial airliner maintenance hangar exterior','commercial aircraft landing gear on apron'],
+        'fin':['commercial passenger aircraft airline fleet','commercial airliner boarding gate airport'],
+        'future':['commercial aircraft prototype airport','next generation commercial airliner'],
+        'ops':['commercial airliner ground operations airport','commercial aircraft turnaround airport'],
+    }
+    return list(dict.fromkeys(base + por_area.get(area, []) + _consultas_visuales_83(caso)))
 
 def _puntuacion_industria_86(caso,i,evidencia,clases):
-    if not clases:return 0,[]
+    # Regla editorial del nicho: evitar esquemas y personas; mostrar aviones comerciales reales.
+    if not clases or 'aeronave' not in clases or not _foto_avion_comercial_89(evidencia):
+        return 0,[]
     directo,hits=_score_escena_83(caso,i,evidencia)
-    if directo:return 100+directo,hits
+    if directo:
+        return 120+directo,['avion_comercial']+hits
     plan=[x for x in caso.get('_plan_visual',[]) if x[0]!='cta']
     if i>=len(plan):return 0,[]
-    narr=_univ_normalizar(plan[i][1]); area=_tema_id_actual(caso).split('_')[0]
-    preferidas={'motor':{'motor','mantenimiento'},'mnt':{'mantenimiento','motor'},'atc':{'control','aeropuerto'},'fin':{'aeronave','operaciones','aeropuerto'},'ops':{'aeronave','operaciones','aeropuerto'},'future':{'fabricacion','aeronave','motor'}}.get(area,set())
-    local=set()
-    for k,pat in {'motor':r'motor|turbina|compresor|propulsion','control':r'control aereo|torre|radar|despach','aeropuerto':r'aeropuerto|terminal|pista|rodaje','mantenimiento':r'mantenimiento|neumatic|inspeccion|tren de aterrizaje','operaciones':r'combustible|pasajero|equipaje|carga|asiento','fabricacion':r'fabricacion|ensamblaje|produccion','aeronave':r'avion|aeronave|flota|aerolinea'}.items():
-        if re.search(pat,narr):local.add(k)
-    # Contexto ilustrativo: no se afirma que represente el sistema exacto.
-    return 15+8*len(clases&local)+3*len(clases&preferidas),['contexto_aeronautico']+sorted(clases)
+    narr=_univ_normalizar(plan[i][1])
+    bonus=0
+    if re.search(r'\b(?:avion|aeronave|aerolinea|flota|comercial|pasajeros|terminal|pista|rodaje|aeropuerto)\b',narr):
+        bonus+=8
+    return 40+bonus,['avion_comercial','contexto_aeronautico']
 
 
 if __name__=='__main__':
     print(f'AEROFACTUM UNIVERSAL {VERSION_SCRIPT} | Nicho: {NICHO}',flush=True)
+    print('YouTube privacidad configurada:',YOUTUBE_PRIVACY,flush=True)
     if '--self-test' in sys.argv:
         from unittest.mock import patch
         with patch.dict(globals(),{'NICHO':'Aviación'}):
@@ -5386,6 +5496,9 @@ if __name__=='__main__':
         assert not _industria_visual_86("USAF aircraft turbofan engine")
         assert not _industria_visual_86("Siemens Schuckert Landaulet automobile")
         assert not _industria_visual_86("electric power control tower")
+        assert _foto_avion_comercial_89("Boeing 737 commercial passenger aircraft at airport")
+        assert not _foto_avion_comercial_89("pilot standing beside aircraft")
+        assert not _foto_avion_comercial_89("USAF fighter aircraft")
         from tempfile import TemporaryDirectory
         with TemporaryDirectory() as td, patch.dict(globals(),{'NICHO':'Datos de la Industria Aeronáutica','PUBLICAR_EN_YOUTUBE':True,'YOUTUBE_PRIVACY':'public','IMAGENES_MINIMAS':4}):
             c={'titulo':'Industria aeronáutica','_episodio':{'caso_id':'atc_01'},'_plan_visual':[('gancho','La torre de control aéreo coordina el tráfico.'),('contexto','El sector tiene una enorme importancia económica.'),('desarrollo','El turbofán impulsa a los aviones.'),('conclusion','Hay muchas oportunidades de crecimiento.') ]}
