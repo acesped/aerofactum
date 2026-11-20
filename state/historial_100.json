@@ -189,5 +189,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=CzLzIgX5jHk",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/mnt_06_20261120_030511_361659/¿Por qué se revisan los neumáticos de avión antes de cada vuelo.mp4"
+  },
+  {
+    "episodio": "mnt_03",
+    "caso": "mnt_03",
+    "titulo": "¿Cómo una Directiva de Aeronavegabilidad puede detener un avión en pleno vuelo?",
+    "fecha_utc": "2026-11-20T15:04:59.532677+00:00",
+    "youtube_id": "AYalL9ZCSLw",
+    "youtube_url": "https://www.youtube.com/watch?v=AYalL9ZCSLw",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/mnt_03_20261120_150133_502530/¿Cómo una Directiva de Aeronavegabilidad puede detener un avión en pleno vuelo.mp4"
   }
 ]
