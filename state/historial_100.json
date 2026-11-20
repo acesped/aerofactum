@@ -199,5 +199,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=AYalL9ZCSLw",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/mnt_03_20261120_150133_502530/¿Cómo una Directiva de Aeronavegabilidad puede detener un avión en pleno vuelo.mp4"
+  },
+  {
+    "episodio": "motor_07",
+    "caso": "motor_07",
+    "titulo": "¿Por qué la cabina se presuriza a 8,000 pies y cómo protege a los pasajeros?",
+    "fecha_utc": "2026-11-20T21:16:35.810008+00:00",
+    "youtube_id": "z0dVsgvs6mI",
+    "youtube_url": "https://www.youtube.com/watch?v=z0dVsgvs6mI",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/motor_07_20261120_211443_197350/¿Por qué la cabina se presuriza a 8,000 pies y cómo protege a los pasajeros.mp4"
   }
 ]
