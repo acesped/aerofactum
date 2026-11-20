@@ -179,5 +179,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=ZJZMX7S6onA",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/ops_05_20261119_213904_022953/¿Por qué calculamos el combustible exacto antes de cada vuelo.mp4"
+  },
+  {
+    "episodio": "mnt_06",
+    "caso": "mnt_06",
+    "titulo": "¿Por qué se revisan los neumáticos de avión antes de cada vuelo?",
+    "fecha_utc": "2026-11-20T03:08:47.962642+00:00",
+    "youtube_id": "CzLzIgX5jHk",
+    "youtube_url": "https://www.youtube.com/watch?v=CzLzIgX5jHk",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/mnt_06_20261120_030511_361659/¿Por qué se revisan los neumáticos de avión antes de cada vuelo.mp4"
   }
 ]
