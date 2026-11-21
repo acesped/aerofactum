@@ -209,5 +209,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=z0dVsgvs6mI",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/motor_07_20261120_211443_197350/¿Por qué la cabina se presuriza a 8,000 pies y cómo protege a los pasajeros.mp4"
+  },
+  {
+    "episodio": "motor_09",
+    "caso": "motor_09",
+    "titulo": "¿Cómo funciona el APU y por qué es vital para cada despegue?",
+    "fecha_utc": "2026-11-21T03:03:07.761727+00:00",
+    "youtube_id": "516koc6OO9w",
+    "youtube_url": "https://www.youtube.com/watch?v=516koc6OO9w",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/motor_09_20261121_030123_436143/¿Cómo funciona el APU y por qué es vital para cada despegue.mp4"
   }
 ]
