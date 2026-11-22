@@ -229,5 +229,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=JzYX1qc5lPg",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/motor_01_20261122_030104_775155/¿Cómo consigue un turbofán su empuje combinando ventilador y núcleo.mp4"
+  },
+  {
+    "episodio": "ops_07",
+    "caso": "ops_07",
+    "titulo": "¿Cómo afecta una pista contaminada al frenado y la seguridad del despegue?",
+    "fecha_utc": "2026-11-22T15:04:36.662447+00:00",
+    "youtube_id": "1ZY0QMoVfdI",
+    "youtube_url": "https://www.youtube.com/watch?v=1ZY0QMoVfdI",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/ops_07_20261122_150126_521173/¿Cómo afecta una pista contaminada al frenado y la seguridad del despegue.mp4"
   }
 ]
