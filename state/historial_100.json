@@ -219,5 +219,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=516koc6OO9w",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/motor_09_20261121_030123_436143/¿Cómo funciona el APU y por qué es vital para cada despegue.mp4"
+  },
+  {
+    "episodio": "motor_01",
+    "caso": "motor_01",
+    "titulo": "¿Cómo consigue un turbofán su empuje combinando ventilador y núcleo?",
+    "fecha_utc": "2026-11-22T03:02:59.269604+00:00",
+    "youtube_id": "JzYX1qc5lPg",
+    "youtube_url": "https://www.youtube.com/watch?v=JzYX1qc5lPg",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/motor_01_20261122_030104_775155/¿Cómo consigue un turbofán su empuje combinando ventilador y núcleo.mp4"
   }
 ]
