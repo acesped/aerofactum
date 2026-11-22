@@ -239,5 +239,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=1ZY0QMoVfdI",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/ops_07_20261122_150126_521173/¿Cómo afecta una pista contaminada al frenado y la seguridad del despegue.mp4"
+  },
+  {
+    "episodio": "ops_09",
+    "caso": "ops_09",
+    "titulo": "¿Qué revela el briefing de salida antes del despegue?",
+    "fecha_utc": "2026-11-22T20:26:33.562732+00:00",
+    "youtube_id": "r-PQssPc45Y",
+    "youtube_url": "https://www.youtube.com/watch?v=r-PQssPc45Y",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/ops_09_20261122_202418_997971/¿Qué revela el briefing de salida antes del despegue.mp4"
   }
 ]
