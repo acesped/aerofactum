@@ -249,5 +249,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=r-PQssPc45Y",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/ops_09_20261122_202418_997971/¿Qué revela el briefing de salida antes del despegue.mp4"
+  },
+  {
+    "episodio": "ops_02",
+    "caso": "ops_02",
+    "titulo": "Qué significa VR: ¿qué conviene comprender de este fenómeno?",
+    "fecha_utc": "2026-11-23T03:03:49.977960+00:00",
+    "youtube_id": "LCl9tcZAavY",
+    "youtube_url": "https://www.youtube.com/watch?v=LCl9tcZAavY",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/ops_02_20261123_030136_415093/Qué significa VR ¿qué conviene comprender de este fenómeno.mp4"
   }
 ]
