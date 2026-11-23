@@ -259,5 +259,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=LCl9tcZAavY",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/ops_02_20261123_030136_415093/Qué significa VR ¿qué conviene comprender de este fenómeno.mp4"
+  },
+  {
+    "episodio": "fin_05",
+    "caso": "fin_05",
+    "titulo": "¿Por qué el combustible encarece los boletos de avión?",
+    "fecha_utc": "2026-11-23T15:04:23.777207+00:00",
+    "youtube_id": "fKyGm6s39fQ",
+    "youtube_url": "https://www.youtube.com/watch?v=fKyGm6s39fQ",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/fin_05_20261123_150202_860191/¿Por qué el combustible encarece los boletos de avión.mp4"
   }
 ]
