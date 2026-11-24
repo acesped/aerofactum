@@ -269,5 +269,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=fKyGm6s39fQ",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/fin_05_20261123_150202_860191/¿Por qué el combustible encarece los boletos de avión.mp4"
+  },
+  {
+    "episodio": "atc_08",
+    "caso": "atc_08",
+    "titulo": "¿Por qué el turnaround acelera la llegada de un avión al aeropuerto?",
+    "fecha_utc": "2026-11-24T01:20:12.744083+00:00",
+    "youtube_id": "rdf6qrVLDZQ",
+    "youtube_url": "https://www.youtube.com/watch?v=rdf6qrVLDZQ",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/atc_08_20261124_011812_530210/¿Por qué el turnaround acelera la llegada de un avión al aeropuerto.mp4"
   }
 ]
