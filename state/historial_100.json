@@ -289,5 +289,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=ChMvqDm7okA",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/motor_02_20261124_030054_552645/¿Cómo logra el compresor del motor alcanzar la presión necesaria para la combustión.mp4"
+  },
+  {
+    "episodio": "mnt_08",
+    "caso": "mnt_08",
+    "titulo": "¿Por qué una MEL puede detener un vuelo y cómo se decide su uso?",
+    "fecha_utc": "2026-11-24T23:07:22.796327+00:00",
+    "youtube_id": "32Bde4xVCl4",
+    "youtube_url": "https://www.youtube.com/watch?v=32Bde4xVCl4",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/mnt_08_20261124_230528_240510/¿Por qué una MEL puede detener un vuelo y cómo se decide su uso.mp4"
   }
 ]
