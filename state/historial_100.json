@@ -279,5 +279,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=rdf6qrVLDZQ",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/atc_08_20261124_011812_530210/¿Por qué el turnaround acelera la llegada de un avión al aeropuerto.mp4"
+  },
+  {
+    "episodio": "motor_02",
+    "caso": "motor_02",
+    "titulo": "¿Cómo logra el compresor del motor alcanzar la presión necesaria para la combustión?",
+    "fecha_utc": "2026-11-24T03:03:59.946714+00:00",
+    "youtube_id": "ChMvqDm7okA",
+    "youtube_url": "https://www.youtube.com/watch?v=ChMvqDm7okA",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/motor_02_20261124_030054_552645/¿Cómo logra el compresor del motor alcanzar la presión necesaria para la combustión.mp4"
   }
 ]
