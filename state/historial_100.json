@@ -299,5 +299,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=32Bde4xVCl4",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/mnt_08_20261124_230528_240510/¿Por qué una MEL puede detener un vuelo y cómo se decide su uso.mp4"
+  },
+  {
+    "episodio": "future_01",
+    "caso": "future_01",
+    "titulo": "¿Cómo transforma el combustible SAF la huella de carbono de la aviación?",
+    "fecha_utc": "2026-11-25T03:04:13.989029+00:00",
+    "youtube_id": "mcKKVmzXtZU",
+    "youtube_url": "https://www.youtube.com/watch?v=mcKKVmzXtZU",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/future_01_20261125_030122_289928/¿Cómo transforma el combustible SAF la huella de carbono de la aviación.mp4"
   }
 ]
