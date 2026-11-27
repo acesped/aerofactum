@@ -309,5 +309,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=mcKKVmzXtZU",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/future_01_20261125_030122_289928/¿Cómo transforma el combustible SAF la huella de carbono de la aviación.mp4"
+  },
+  {
+    "episodio": "ops_03",
+    "caso": "ops_03",
+    "titulo": "Qué significa V2: ¿qué conviene comprender de este fenómeno?",
+    "fecha_utc": "2026-11-27T22:04:33.706958+00:00",
+    "youtube_id": "nWksX08gz9w",
+    "youtube_url": "https://www.youtube.com/watch?v=nWksX08gz9w",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/ops_03_20261127_220246_451914/Qué significa V2 ¿qué conviene comprender de este fenómeno.mp4"
   }
 ]
