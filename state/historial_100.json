@@ -319,5 +319,15 @@
     "youtube_url": "https://www.youtube.com/watch?v=nWksX08gz9w",
     "youtube_estado": "completo",
     "salida": "output/AEROFACTUM/ops_03_20261127_220246_451914/Qué significa V2 ¿qué conviene comprender de este fenómeno.mp4"
+  },
+  {
+    "episodio": "future_03",
+    "caso": "future_03",
+    "titulo": "¿Cómo el hidrógeno podría transformar los vuelos regionales en la próxima década?",
+    "fecha_utc": "2026-11-28T03:04:29.810016+00:00",
+    "youtube_id": "-6wpZhHuR-Y",
+    "youtube_url": "https://www.youtube.com/watch?v=-6wpZhHuR-Y",
+    "youtube_estado": "completo",
+    "salida": "output/AEROFACTUM/future_03_20261128_030123_769466/¿Cómo el hidrógeno podría transformar los vuelos regionales en la próxima década.mp4"
   }
 ]
